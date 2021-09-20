@@ -1,0 +1,25 @@
+{
+    "name":        "simon-downes/spl",
+    "description": "Simon's PHP Library",
+    "keywords":    ["php"],
+    "license":     "MIT",
+    "authors": [
+        {
+            "name":     "Simon Downes",
+            "email":    "simon@simondownes.co.uk",
+            "homepage": "https://simondownes.co.uk",
+            "role":     "Developer"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": "~8.0",
+        "ext-pdo": "*",
+        "ext-mbstring": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "spl\\": "src/"
+        }
+    }
+}
