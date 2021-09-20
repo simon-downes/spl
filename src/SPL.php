@@ -7,8 +7,7 @@ namespace spl;
 
 use Exception, ErrorException, Throwable, BadMethodCallException, ReflectionClass, ReflectionMethod;
 
-use spf\exceptions\Handler;
-use spf\debug\VarDumper;
+use spl\support\VarDumper;
 
 class SPL {
 
@@ -49,23 +48,10 @@ class SPL {
     }
 
     /**
-     * Pretty-print a variable - if running in debug mode.
+     * Pretty-print a variable to STDOUT.
      */
     public static function dump( $var ): void {
-
-        if( static::isDebug() ) {
-            $d = new VarDumper();
-            echo $d->dump($var), "\n";
-        }
-
-    }
-
-    /**
-     * Specifies the function to execute in the event of an exception being thrown during a call to SPF::run().
-     * @param callable $handler
-     */
-    public static function setExceptionHandler( callable $handler = null ): void {
-        static::$exception_handler = $handler;
+        echo (new VarDumper())->dump($var), "\n";
     }
 
     public static function init(): void {
@@ -86,7 +72,7 @@ class SPL {
      * Executes the specified closure, wrapping it in SPF's error and exception handling.
      * @return mixed
      */
-    public static function run( callable $callable, ...$args ) {
+    public static function run( callable $callable, ...$args ): mixed {
 
         try {
 
@@ -105,18 +91,26 @@ class SPL {
 
         }
         catch( Throwable $e ) {
-
-            $handler = static::$exception_handler;
-
-            if( empty($handler) ) {
-                $handler = [new Handler(), 'handle'];
-            }
-
-            $result = call_user_func($handler, $e);
-
+            static::error($e);
         }
 
         return $result;
+
+    }
+
+    public static function error( Throwable $error ): void {
+
+        $debug = static::isDebug();
+
+        // cli scripts always just get a pretty print dump of the error
+        if( static::isCLI() ) {
+            static::dump($error);
+        }
+        else {
+            require __DIR__. '/error.php';
+        }
+
+        die();
 
     }
 
