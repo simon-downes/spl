@@ -3,11 +3,11 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
-namespace spl\support;
+namespace spl\debug;
 
 use Throwable, ErrorException, ReflectionClass, ReflectionObject;
 
-use spl\contracts\support\Dumpable;
+use spl\contracts\debug\Dumpable;
 
 class VarDumper {
 

@@ -7,7 +7,7 @@ namespace spl;
 
 use Exception, ErrorException, Throwable, BadMethodCallException, ReflectionClass, ReflectionMethod;
 
-use spl\support\VarDumper;
+use spl\debug\VarDumper;
 
 class SPL {
 
