@@ -6,10 +6,6 @@
 
 use spl\SPL;
 
-// capture the timestamp and current memory usage if they haven't been already
-defined('SPL_START_TIME') || define('SPL_START_TIME', microtime(true));
-defined('SPL_START_MEM')  || define('SPL_START_MEM', memory_get_usage());
-
 if( !function_exists('d') ) {
 	function d( ...$vars ) {
 		if( !SPL::isDebug() ) {

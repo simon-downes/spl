@@ -56,8 +56,7 @@ class SPL {
 
     public static function init(): void {
 
-        // global helper functions (e.g. d() and dd())
-        require __DIR__.'/bootstrap.php';
+        require 'functions.php';
 
         static::registerHelpers([
             'spl\\helpers\\ArrayHelper',
@@ -165,3 +164,5 @@ class SPL {
     }
 
 }
+
+SPL::init();
