@@ -47,6 +47,35 @@ class StringHelper {
 
     }
 
+    public static function buildURL( array $parts, bool $show_pw = false ): string {
+
+        $url = '';
+
+        if( isset($parts['scheme']) ) {
+            $url .= $parts['scheme']. '://';
+        }
+
+        if( isset($parts['user']) ) {
+            $url .= $parts['user'];
+            if( isset($parts['pass']) ) {
+                $url .= ':'. ($show_pw ? $parts['pass'] : '<password>');
+            }
+            $url .= '@';
+        }
+
+        if( isset($parts['host']) ) {
+            $url .= $parts['host'];
+            if( isset($parts['port']) ) {
+                $url .= ':'. $parts['port'];
+            }
+        }
+
+        $url .= $parts['path'] ?? '/';
+
+        return $url;
+
+    }
+
     /**
      * Returns a string of cryptographically strong random hex digits.
      */
