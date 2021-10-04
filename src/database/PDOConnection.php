@@ -29,7 +29,19 @@ class PDOConnection {
     public function __construct(
         protected PDO $pdo,
         protected ?DSN $dsn = null,
-    ) {}
+    ) {
+
+        $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);           // always use exceptions
+
+        if( isset($dsn) ) {
+            $this->setCharacterSet(
+                $dsn->getOption('charset', 'UTF8'),
+                $dsn->getOption('collation')
+            );
+        }
+
+    }
 
     // public function select(): SelectQuery {
     //     return new query\Select($this);
@@ -356,7 +368,7 @@ class PDOConnection {
      * @param string $collation the collation method to use for the connection
      * @return self
      */
-    protected function setCharacterSet( string $charset, string $collation = '' ): DatabaseConnection {
+    protected function setCharacterSet( string $charset, string $collation = '' ): static {
 
         if( empty($charset) ) {
             throw new DatabaseException('No character set specified');

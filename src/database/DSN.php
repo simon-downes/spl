@@ -132,13 +132,6 @@ class DSN {
     }
 
     /**
-     * Return a connection string for use by PDO.
-     */
-    public function getConnectionString(): string {
-        return $this->config['pdo'];
-    }
-
-    /**
      * Ensure the dsn configuration is valid.
      */
     protected function configure( array $config ): void {
