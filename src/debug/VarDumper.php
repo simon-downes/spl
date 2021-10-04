@@ -7,8 +7,6 @@ namespace spl\debug;
 
 use Throwable, ErrorException, ReflectionClass, ReflectionObject;
 
-use spl\contracts\debug\Dumpable;
-
 class VarDumper {
 
     protected $depth;
@@ -96,12 +94,6 @@ class VarDumper {
 
         if( $item = $this->recursionCheck($obj) ) {
             return $item;
-        }
-        elseif( $obj instanceof Dumpable ) {
-            $item = $obj->dump($this);
-            if( $item ) {
-                return $item;
-            }
         }
         elseif( $obj instanceof Throwable ) {
             return $this->dumpThrowable($obj);
