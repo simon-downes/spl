@@ -9,14 +9,13 @@ use Closure, PDO, PDOStatement, PDOException;
 
 // use spf\contracts\database\{DatabaseConnection, SelectQuery, InsertQuery, UpdateQuery, DeleteQuery};
 // use spf\contracts\profiler\{ProfilerAware, ProfilerAwareTrait};
-use spl\contracts\debug\Dumpable;
 
 use spl\database\exceptions\{DatabaseException, QueryException, TransactionException};
 
 /**
  * A wrapper for PDO that provides some handy extra functions and streamlines everything else.
  */
-class PDOConnection implements Dumpable {
+class PDOConnection {
 // abstract class PdoConnection implements DatabaseConnection, ProfilerAware, Dumpable {
 
     /**
@@ -311,10 +310,6 @@ class PDOConnection implements Dumpable {
             throw new DatabaseException($e->getMessage(), $e->getCode(), $e);
         }
 
-    }
-
-    public function dump( Dumper $dumper ): string {
-        return '';
     }
 
     /**
