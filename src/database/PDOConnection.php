@@ -7,6 +7,7 @@ namespace spl\database;
 
 use Closure, PDO, PDOStatement, PDOException;
 
+use spl\contracts\database\{DatabaseConnection};
 // use spf\contracts\database\{DatabaseConnection, SelectQuery, InsertQuery, UpdateQuery, DeleteQuery};
 // use spf\contracts\profiler\{ProfilerAware, ProfilerAwareTrait};
 
@@ -15,7 +16,7 @@ use spl\database\exceptions\{DatabaseException, QueryException, TransactionExcep
 /**
  * A wrapper for PDO that provides some handy extra functions and streamlines everything else.
  */
-class PDOConnection {
+class PDOConnection implements DatabaseConnection {
 // abstract class PdoConnection implements DatabaseConnection, ProfilerAware, Dumpable {
 
     /**
@@ -369,6 +370,11 @@ class PDOConnection {
      * @return self
      */
     protected function setCharacterSet( string $charset, string $collation = '' ): static {
+
+        // not supported for sqlsrv
+        if( $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) == 'sqlsrv' ) {
+            return $this;
+        }
 
         if( empty($charset) ) {
             throw new DatabaseException('No character set specified');
