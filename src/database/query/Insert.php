@@ -27,14 +27,6 @@ class Insert extends BaseQuery {
         return $this;
     }
 
-    public function cols( array $columns ): static {
-        $this->columns = [];
-        foreach( $columns as $column ) {
-            $this->columns[] = $this->quoteIdentifier($column);
-        }
-        return $this;
-    }
-
     public function item( array $item ): static {
 
         if( empty($this->columns) ) {
