@@ -21,10 +21,6 @@ class Delete extends BaseQuery {
         return $this;
     }
 
-    public function execute(): int {
-        return $this->db->execute((string) $this, $this->params);
-    }
-
     protected function compile(): array {
 
         return array_merge(

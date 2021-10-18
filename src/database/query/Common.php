@@ -85,6 +85,10 @@ trait Common {
         return $this;
     }
 
+    public function execute(): int {
+        return $this->db->execute((string) $this, $this->params);
+    }
+
     protected function compileWhere(): array {
 
         $sql = [];

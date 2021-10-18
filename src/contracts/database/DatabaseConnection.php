@@ -13,7 +13,7 @@ interface DatabaseConnection {
 
     public function insert(): Query;
 
-    // public function update(): Query;
+    public function update( string $table ): Query;
 
     public function delete(): Query;
 

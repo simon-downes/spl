@@ -10,7 +10,7 @@ use Closure, PDO, PDOStatement, PDOException;
 use spl\contracts\database\{DatabaseConnection, Query};
 // use spf\contracts\profiler\{ProfilerAware, ProfilerAwareTrait};
 
-use spl\database\query\{Insert, Delete};
+use spl\database\query\{Insert, Update, Delete};
 use spl\database\exceptions\{DatabaseException, QueryException, TransactionException};
 
 /**
@@ -52,9 +52,9 @@ class PDOConnection implements DatabaseConnection {
         return new Insert($this);
     }
 
-    // public function update(): Query {
-    //     return new Update($this);
-    // }
+    public function update( string $table ): Query {
+        return (new Update($this))->table($table);
+    }
 
     public function delete(): Query {
         return new Delete($this);
