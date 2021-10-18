@@ -9,25 +9,13 @@ use PDO, PDOStatement;
 
 interface DatabaseConnection {
 
-    // /**
-    //  * Return a new SelectQuery instance;
-    //  */
-    // public function select(): SelectQuery;
+    // public function select(): Query;
 
-    // /**
-    //  * Return a new InsertQuery instance;
-    //  */
-    // public function insert(): InsertQuery;
+    public function insert(): Query;
 
-    // /**
-    //  * Return a new UpdateQuery instance;
-    //  */
-    // public function update(): UpdateQuery;
+    // public function update(): Query;
 
-    // /**
-    //  * Return a new DeleteQuery instance;
-    //  */
-    // public function delete(): DeleteQuery;
+    public function delete(): Query;
 
     /**
      * Create a prepared statement.

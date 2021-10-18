@@ -7,10 +7,10 @@ namespace spl\database;
 
 use Closure, PDO, PDOStatement, PDOException;
 
-use spl\contracts\database\{DatabaseConnection};
-// use spf\contracts\database\{DatabaseConnection, SelectQuery, InsertQuery, UpdateQuery, DeleteQuery};
+use spl\contracts\database\{DatabaseConnection, Query};
 // use spf\contracts\profiler\{ProfilerAware, ProfilerAwareTrait};
 
+use spl\database\query\{Insert, Delete};
 use spl\database\exceptions\{DatabaseException, QueryException, TransactionException};
 
 /**
@@ -44,21 +44,21 @@ class PDOConnection implements DatabaseConnection {
 
     }
 
-    // public function select(): SelectQuery {
-    //     return new query\Select($this);
+    // public function select(): Query {
+    //     return new Select($this);
     // }
 
-    // public function insert(): InsertQuery {
-    //     return new query\Insert($this);
+    public function insert(): Query {
+        return new Insert($this);
+    }
+
+    // public function update(): Query {
+    //     return new Update($this);
     // }
 
-    // public function update(): UpdateQuery {
-    //     return new query\Update($this);
-    // }
-
-    // public function delete(): DeleteQuery {
-    //     return new query\Delete($this);
-    // }
+    public function delete(): Query {
+        return new Delete($this);
+    }
 
     public function getPDO(): PDO {
         return $this->$pdo;
