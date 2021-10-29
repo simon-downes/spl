@@ -9,7 +9,7 @@ use PDO, PDOStatement;
 
 interface DatabaseConnection {
 
-    // public function select(): Query;
+    public function select(): Query;
 
     public function insert(): Query;
 
