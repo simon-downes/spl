@@ -7,12 +7,14 @@ namespace spl\database;
 
 use InvalidArgumentException;
 
+use Countable;
+
 use PDO, PDOException;
 
 use spl\contracts\database\DatabaseConnection;
 use spl\database\exceptions\{DatabaseException, ConfigurationException, ConnectionException};
 
-class ConnectionManager {
+class ConnectionManager implements Countable {
 
     /**
      * Array of database connections.
@@ -45,6 +47,10 @@ class ConnectionManager {
             throw new ConnectionException($e->getMessage(), $e->getCode(), $e);
         }
 
+    }
+
+    public function count(): int {
+        return count($this->connections);
     }
 
     public function add( string $name, DatabaseConnection $connection ): void {
