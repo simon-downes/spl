@@ -53,7 +53,7 @@ class ConnectionManager implements Countable {
         return count($this->connections);
     }
 
-    public function add( string $name, DatabaseConnection $connection ): void {
+    public function add( string $name, DSN|DatabaseConnection $connection ): void {
 
         $this->checkName($name);
 
@@ -78,7 +78,14 @@ class ConnectionManager implements Countable {
             $name = $this->default;
         }
 
-        return $this->connections[$name] ?? null;
+        $db = $this->connections[$name] ?? null;
+
+        if( $db instanceof DSN ) {
+            $db = static::connect($db);
+            $this->connections[$name] = $db;
+        }
+
+        return $db;
 
     }
 
