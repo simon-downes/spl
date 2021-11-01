@@ -19,6 +19,7 @@ class Select extends BaseQuery {
     protected array|string $columns = [];
     protected bool $distinct = false;
     protected string $from = '';
+    protected array $joins = [];
     protected array $group_by = [];
     protected array $having = [];
     protected int|null $offset = null;
