@@ -62,6 +62,7 @@ class SPL {
             'spl\\helpers\\ArrayHelper',
             'spl\\helpers\\StringHelper',
             'spl\\helpers\\DateTimeHelper',
+            'spl\\helpers\\HttpHelper',
             'spl\\helpers\\Inflector',
         ]);
 
