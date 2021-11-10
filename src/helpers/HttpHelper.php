@@ -24,7 +24,7 @@ class HttpHelper {
      * @param array $headers
      * @return array
      */
-    public static function http( string $url, array $headers = [], string $method = 'GET', string|array $body = '' ): array {
+    public static function http( string $url, array $headers = [], string $method = 'GET', string|array $body = '' ): object {
 
         $ch = curl_init($url);
 
