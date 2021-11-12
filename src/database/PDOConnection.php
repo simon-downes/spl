@@ -371,8 +371,8 @@ class PDOConnection implements DatabaseConnection {
      */
     protected function setCharacterSet( string $charset, string $collation = '' ): static {
 
-        // not supported for sqlsrv
-        if( $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) == 'sqlsrv' ) {
+        // not supported for sqlsrv or sqlite
+        if( in_array($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME), ['sqlsrv', 'sqlite']) ) {
             return $this;
         }
 

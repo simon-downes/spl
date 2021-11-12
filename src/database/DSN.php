@@ -207,8 +207,8 @@ class DSN {
 
         // construct a SQLite PDO connection string
         $config['pdo'] = sprintf(
-            'sqlite::%s',
-            $config['db']
+            'sqlite:%s',
+            (defined('APP_ROOT') ? APP_ROOT. '/' : ''). $config['db']
         );
 
         return $config;
