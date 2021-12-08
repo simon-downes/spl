@@ -132,8 +132,8 @@ class Select extends BaseQuery {
             $this->compileGroupBy(),
             $this->having,
             $this->compileOrderBy(),
-            $this->compileOffset(),
             $this->compileLimit(),
+            $this->compileOffset(),
         );
 
     }
@@ -158,7 +158,7 @@ class Select extends BaseQuery {
 
         }
 
-        return implode(', ', $cols);
+        return implode(",\n", $columns);
 
     }
 

@@ -16,10 +16,22 @@ abstract class SimpleModel implements Model {
 
         // get a list of valid properties and where the data array has a key with the same name
         // then assign the value of the element to the property
-        foreach( $this->getPropertyList() as $property ) {
-            if( isset($data[$property]) ) {
-                $this->$property = $data[$property];
+        foreach( $this->getPropertyList() as $property => $type ) {
+
+            if( !isset($data[$property]) ) {
+                continue;
             }
+
+            $func = match( $type ) {
+                'int'     => 'intval',
+                'float'   => 'floatval',
+                'boolean' => 'boolval',
+                'array'   => function( mixed $v ): array { return is_array($v) ? $v : explode(',', $v); },
+                default   => 'strval',
+            };
+
+            $this->$property = $func($data[$property]);
+
         }
 
     }
@@ -91,7 +103,7 @@ abstract class SimpleModel implements Model {
                     continue;
                 }
 
-                $props[] = $k;
+                $props[$k] = $property->getType()->getName();
 
             }
 
