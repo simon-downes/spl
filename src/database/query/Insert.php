@@ -30,7 +30,7 @@ class Insert extends BaseQuery {
     public function item( array $item ): static {
 
         if( empty($this->columns) ) {
-            $this->cols(array_keys($item));
+            $this->columns = array_keys($item);
         }
 
         $values = [];
