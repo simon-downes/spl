@@ -8,33 +8,23 @@ namespace spl\contracts\queue;
 enum TaskStatus: string {
 
     /**
-     * Ready to be picked up by a worker
+     * Ready to be picked up by a worker.
      */
     case QUEUED     = 'QUEUED';
 
     /**
-     * Has been allocated to a worker
+     * Has been allocated to a worker.
      */
     case PROCESSING = 'PROCESSING';
 
     /**
-     * A worker has completed processing the job
+     * Task was successfully completed.
      */
     case COMPLETE   = 'COMPLETE';
 
     /**
-     * A worker encountered an error while processing the job
+     * Task was not successfully completed.
      */
-    case ERROR      = 'ERROR';
-
-    /**
-     * Has been requested to be killed
-     */
-    case KILL       = 'KILL';
-
-    /**
-     * Has been killed
-     */
-    case KILLED     = 'KILLED';
+    case FAILED     = 'FAILED';
 
 }
