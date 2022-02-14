@@ -33,6 +33,9 @@ class SimpleWorker implements Worker {
 
     /**
      * Process ID of current task.
+     * Null - no task process is currently running
+     * 0 - We're the task process that's currently running
+     * >0 - We're the worker that's responsible for the currently running task
      */
     protected ?int $task_pid = null;
 
