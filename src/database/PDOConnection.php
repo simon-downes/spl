@@ -44,6 +44,35 @@ class PDOConnection implements DatabaseConnection {
 
     }
 
+    /**
+     * Re-establish the database connection.
+     * Mostly used after calling pcntl_fork() or similar.
+     * This method will have no effect if references to the underlying PDO instance exist outside of this PDOConnection instance.
+     *
+     */
+    public function reconnect(): void {
+
+        if( !$this->dsn ) {
+            return;
+        }
+
+        // destroy the current connection
+        unset($this->pdo);
+
+        // any PDOStatement instances will also hold a reference to the connection
+        // so we need to destroy those as well...
+        $this->statements = [];
+
+        // now we should be able to create a new PDO instance with a new connection
+        $this->pdo = new PDO(
+            $this->dsn->pdo,
+            $this->dsn->user,
+            $this->dsn->pass,
+            $this->dsn->options
+        );
+
+    }
+
     public function select( ...$columns ): Query {
         return (new Select($this))->cols(...$columns);
     }
