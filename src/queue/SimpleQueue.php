@@ -10,8 +10,6 @@ use RuntimeException;
 
 use spl\contracts\database\DatabaseConnection;
 
-use spl\SPL;
-use spl\contracts\queue\Job;
 use spl\contracts\queue\Queue;
 use spl\contracts\queue\TaskStatus;
 
@@ -104,11 +102,59 @@ class SimpleQueue implements Queue {
 
     }
 
-    public function clean( $before, $types = ['COMPLETE', 'KILLED', 'ERROR'] ): int {
+    public function clean( string|int $before, bool $include_failed = true ): int {
 
-        // remove complete,
+        if( is_int($before) ) {
+            $before = date('Y-m-d H:i:s', $before);
+        }
+
+        $statuses = [
+            TaskStatus::COMPLETE->value
+        ];
+
+        if( $include_failed ) {
+            $statuses[] = TaskStatus::FAILED->value;
+        }
+
+        $count = (int) $this->db->delete()
+            ->from($this->table)
+            ->where('updated', '<=' , $before)
+            ->where('status', 'IN' , $statuses)
+            ->execute();
+
+        $this->log("CLEANED: {$count}");
+
+        return $count;
 
     }
+
+    public function dead( string|int $before ): int {
+
+        if( is_int($before) ) {
+            $before = date('Y-m-d H:i:s', $before);
+        }
+
+        $count = (int) $this->db->execute(
+            "UPDATE {$this->table}
+                SET status = :new_status,
+                    output = CONCAT(output, :output),
+                    updated = NOW()
+              WHERE status = :current_status
+                AND updated <= :before",
+            [
+                'new_status'     => TaskStatus::FAILED->value,
+                'output'         => "DEAD\n",
+                'current_status' => TaskStatus::PROCESSING->value,
+                'before'         => $before,
+            ]
+        );
+
+        $this->log("DEAD: {$count}");
+
+        return $count;
+
+    }
+
 
     public function complete( int $task_id ): bool {
 
@@ -144,13 +190,6 @@ class SimpleQueue implements Queue {
 
     }
 
-    /**
-     * Attempt to grab the oldest job in the queue and return it for processing.
-     * If return value is null then either no jobs are queued or the select job was
-     * grabbed by another worker.
-     *
-     * @return stdClass|null
-     */
     public function grab( int|string $worker_id ): ?stdClass {
 
         // grab the id of the oldest task with the QUEUED status

@@ -11,11 +11,7 @@ use RuntimeException;
 
 use Psr\Container\ContainerInterface;
 
-use spl\contracts\database\DatabaseConnection;
-
-use spl\SPL;
 use spl\contracts\queue\Queue;
-use spl\contracts\queue\TaskStatus;
 use spl\contracts\queue\Worker;
 
 class SimpleWorker implements Worker {
@@ -51,7 +47,7 @@ class SimpleWorker implements Worker {
      */
     protected bool $shutdown = false;
 
-    public function __construct( protected ContainerInterface $container, protected $queue ) {
+    public function __construct( protected ContainerInterface $container, protected Queue $queue ) {
     }
 
     /**

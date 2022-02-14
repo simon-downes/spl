@@ -45,8 +45,41 @@ interface Queue {
     public function status( string $task_type = '' ): array;
 
     /**
-     * Transition a task from PROCESSING to ERROR and emit an error message.
-     * This method should only be called by a worker.
+     * Remove complete and optionally failed jobs before the specified date/time.
+     *
+     * @param string|integer $before an integer timestamp or string date time
+     * @param boolean $include_failed
+     * @return integer  the number of tasks that were cleaned
+     */
+    public function clean( string|int $before, bool $include_failed = true ): int;
+
+    /**
+     * Mark any tasks that haven't been updated since the specified time as FAILED.
+     *
+     * @param string|integer $before
+     * @return integer   the number of tasks that were failed
+     */
+    public function dead( string|int $before ): int;
+
+    /**
+     * Attempt to grab the oldest job in the queue and return it for processing.
+     * If return value is null then either no jobs are queued or the select job was
+     * grabbed by another worker.
+     *
+     * @return stdClass|null
+     */
+    public function grab( int|string $worker_id ): ?stdClass;
+
+    /**
+     * Mark a task as COMPLETE - this method should only be called by a worker.
+     *
+     * @param integer $task_id
+     * @return boolean
+     */
+    public function complete( int $task_id ): bool;
+
+    /**
+     * Mark a task as FAILED - this method should only be called by a worker.
      *
      * @param integer $task_id
      * @return boolean
