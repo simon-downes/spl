@@ -38,7 +38,7 @@ abstract class SimpleModel implements Model {
 
     public function __get( string $name ): mixed {
 
-        if( in_array($name, $this->getPropertyList()) ) {
+        if( isset($this->getPropertyList()[$name]) ) {
             return $this->$name;
         }
 
@@ -48,7 +48,7 @@ abstract class SimpleModel implements Model {
 
     public function __isset(string $name): bool {
 
-        if( in_array($name, $this->getPropertyList()) ) {
+        if( isset($this->getPropertyList()[$name]) ) {
             return isset($this->$name);
         }
 
@@ -58,7 +58,7 @@ abstract class SimpleModel implements Model {
 
     public function __set( string $name, mixed $value ): void {
 
-        if( !in_array($name, $this->getPropertyList()) ) {
+        if( !isset($this->getPropertyList()[$name]) ) {
             throw RuntimeException("Invalid property: $name");
         }
 

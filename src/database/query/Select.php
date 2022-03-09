@@ -125,7 +125,7 @@ class Select extends BaseQuery {
         return array_merge(
             [
                 ($this->distinct ? 'SELECT DISTINCT' : 'SELECT'). ' '. $columns,
-                'FROM '. $this->from,
+                $this->from ? 'FROM '. $this->from : '',
             ],
             $this->compileJoins(),
             $this->compileWhere(),

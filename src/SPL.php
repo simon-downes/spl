@@ -98,7 +98,7 @@ class SPL {
 
     }
 
-    public static function error( Throwable $error ): void {
+    public static function error( Throwable $error, int $exit = 1 ): void {
 
         $debug = static::isDebug();
 
@@ -110,7 +110,9 @@ class SPL {
             require __DIR__. '/error.php';
         }
 
-        die();
+        if( $exit ) {
+            exit($exit);
+        }
 
     }
 
