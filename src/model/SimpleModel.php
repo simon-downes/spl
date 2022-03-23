@@ -59,7 +59,7 @@ abstract class SimpleModel implements Model {
     public function __set( string $name, mixed $value ): void {
 
         if( !isset($this->getPropertyList()[$name]) ) {
-            throw RuntimeException("Invalid property: $name");
+            throw new RuntimeException("Invalid property: $name");
         }
 
         $method = "set{$name}";
