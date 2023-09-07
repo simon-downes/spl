@@ -86,11 +86,9 @@ class App {
                 $regex   = $m[2];
             }
 
-            static::$routes[] = [
-                'regex' => $regex,
-                'methods' => $methods,
-                'handler' => $handler,
-            ];
+            $current = static::$routes[$regex] ?? [];
+
+            static::$routes[$regex] = $current + array_fill_keys($methods, $handler);
 
         }
 
@@ -102,18 +100,20 @@ class App {
      */
     protected static function match( string $path, string $method ): array {
 
-        foreach( static::$routes as $route ) {
+        foreach( static::$routes as $regex => $handlers ) {
 
-            if( preg_match(";^{$route['regex']}$;", $path, $parameters) ) {
+            if( preg_match(";^{$regex}$;", $path, $parameters) ) {
 
-                if( $route['methods'] && !in_array($method, $route['methods']) ) {
+                $handler = $handlers[$method] ?? false;
+
+                if( !$handler ) {
                     throw WebException::methodNotAllowed($method, $path);
                 }
 
                 // first element is the complete string, we only care about the sub-matches
                 array_shift($parameters);
 
-                return [$route['handler'], $parameters];
+                return [$handler, $parameters];
 
             }
 
