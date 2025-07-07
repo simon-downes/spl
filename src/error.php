@@ -36,7 +36,7 @@ $err = [
 // }
 
 // it's an error - don't send a 200 code!
-if( !headers_sent() ) {
+if (!headers_sent()) {
     header(sprintf("%s 500 Internal Server Error", $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1'));
 }
 
@@ -138,17 +138,18 @@ if( !headers_sent() ) {
 
 <div id="header" class="<?=SPL_DEBUG ? 'debug' : ''?>">
     <h1><?=SPL_DEBUG ? $err['name'] : 'Internal Service Error'?></h1>
-    <?php if( SPL_DEBUG ) {?><p><?=$err['message']?><?= $err['code'] ? " (Code {$err['code']})" : '' ?></p><?php } ?>
+    <?php if (SPL_DEBUG) {?><p><?=$err['message']?><?= $err['code'] ? " (Code {$err['code']})" : '' ?></p><?php } ?>
 </div>
 
-<?php if( !SPL_DEBUG ) {?>
+<?php if (!SPL_DEBUG) {?>
 
 <div class="message">
     <p>Alas, it's broken :(</p>
     <p>Please try again later...</p>
 </div>
 
-<?php } else { ?>
+<?php }
+else { ?>
 
 <div id="file">
 
@@ -165,20 +166,20 @@ if( !headers_sent() ) {
 
 </div>
 
-<?php if( $err['trace'] ) { ?>
+<?php if ($err['trace']) { ?>
 <div id="trace">
     <h2>Trace:</h2>
     <ol>
-        <?php foreach( $err['trace'] as $i => $item ) { ?>
+        <?php foreach ($err['trace'] as $i => $item) { ?>
         <li class="panel">
             <?php
-                if( isset($item['file']) ) { ?>
+                if (isset($item['file'])) { ?>
             <p>
                 <strong>File:</strong> <code><?=$item['file']; ?></code>
-                <?php if( isset($item['line']) ) { ?> &nbsp;&nbsp;&nbsp;<strong>Line:</strong> <code><?=$item['line'] ?></code><?php } ?>
+                <?php if (isset($item['line'])) { ?> &nbsp;&nbsp;&nbsp;<strong>Line:</strong> <code><?=$item['line'] ?></code><?php } ?>
             </p>
             <?php } ?>
-            <p><strong>Function: </strong><code><?=isset($item['class']) ? $item['class']. $item['type'] : ''?><?=$item['function']. '()'; ?></code></p>
+            <p><strong>Function: </strong><code><?=isset($item['class']) ? $item['class'] . $item['type'] : ''?><?=$item['function'] . '()'; ?></code></p>
         </li>
         <?php } ?>
     </ol>

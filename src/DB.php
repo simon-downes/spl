@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl;
 
 use BadMethodCallException;
@@ -19,14 +20,14 @@ class DB {
      */
     private function __construct() {}
 
-    public static function __callStatic( $name, $arguments ) {
+    public static function __callStatic($name, $arguments) {
 
         // no instance defined so create it
-        if( empty(static::$db) ) {
+        if (empty(static::$db)) {
 
             $dsn = env('DB_DSN');
 
-            if( empty($dsn) ) {
+            if (empty($dsn)) {
                 throw new RuntimeException("Missing value for DB_DSN environment variable");
             }
 
@@ -34,7 +35,7 @@ class DB {
 
         }
 
-        if( !method_exists(static::$db, $name) ) {
+        if (!method_exists(static::$db, $name)) {
             throw new BadMethodCallException(sprintf("Unknown method %s::%s", static::$db::class, $name));
         }
 

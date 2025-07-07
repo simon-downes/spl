@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\web;
 
 use Throwable;
@@ -61,7 +62,7 @@ class Response {
         503 => 'Service Unavailable',
         504 => 'Gateway Timeout',
         505 => 'HTTP Version Not Supported',
-        509 => 'Bandwidth Limit Exceeded'
+        509 => 'Bandwidth Limit Exceeded',
     ];
 
     /**
@@ -84,7 +85,7 @@ class Response {
      */
     protected string $body;
 
-    public static function fromThrowable( Throwable $e ): static {
+    public static function fromThrowable(Throwable $e): static {
 
         $code = $e instanceof WebException ? $e->getCode() : 500;
 
@@ -95,23 +96,23 @@ class Response {
 
     }
 
-    public static function redirect( $url, $permanent = false ): static {
+    public static function redirect($url, $permanent = false): static {
         return (new static($permanent ? 301 : 302))->setHeader('location', $url);
     }
 
-    public static function json( array $data, int $status = 200 ): static {
+    public static function json(array $data, int $status = 200): static {
         return new static($status, json_encode($data), 'application/json');
     }
 
-    public static function html( string $body, int $status = 200 ): static {
+    public static function html(string $body, int $status = 200): static {
         return new static($status, $body);
     }
 
-    public static function text( string $body, int $status = 200 ): static {
+    public static function text(string $body, int $status = 200): static {
         return new static($status, $body, 'text/plain');
     }
 
-    public function __construct( int $status, string $body = '', string $content_type = 'text/html' ) {
+    public function __construct(int $status, string $body = '', string $content_type = 'text/html') {
 
         $this->headers = [];
         $this->cookies = [];
@@ -125,11 +126,11 @@ class Response {
 
     public function __call($name, $arguments) {
 
-        if( str_starts_with($name, 'get') ) {
+        if (str_starts_with($name, 'get')) {
 
             $property = substr(strtolower($name), 3);
 
-            switch( $property ) {
+            switch ($property) {
 
                 case 'status':
                 case 'body':
@@ -159,25 +160,26 @@ class Response {
         return $this->status['code'] >= 500;
     }
 
-    public function setStatus( int $code, string $message = '' ): static {
+    public function setStatus(int $code, string $message = ''): static {
 
-        if( !isset(static::STATUSES[$code]) )
+        if (!isset(static::STATUSES[$code])) {
             throw new Exception("{$code} is not a valid HTTP status code");
+        }
 
         $this->status = [
             'code'    => $code,
-            'message' => $message ? $message : static::STATUSES[$code]
+            'message' => $message ? $message : static::STATUSES[$code],
         ];
 
         return $this;
 
     }
 
-    public function setBody( string $body, string $content_type = 'text/html', $charset = 'UTF-8' ) {
+    public function setBody(string $body, string $content_type = 'text/html', $charset = 'UTF-8') {
 
         $this->body = $body;
 
-        if( empty($charset) ) {
+        if (empty($charset)) {
             $charset = mb_detect_encoding($this->body);
         }
 
@@ -188,13 +190,13 @@ class Response {
 
     }
 
-    public function setHeader( $name = null, $value = null ): static {
+    public function setHeader($name = null, $value = null): static {
 
         // normalise header names
         $name = strtolower($name);
 
         // if null then unset header
-        if( $value === null ) {
+        if ($value === null) {
             unset($this->headers[$name]);
         }
         else {
@@ -205,7 +207,7 @@ class Response {
 
     }
 
-    public function setCookie( $name = null, $value = null, $expires = 0, $path = '/', $domain = '' ): static {
+    public function setCookie($name = null, $value = null, $expires = 0, $path = '/', $domain = ''): static {
 
         $this->cookies[$name] = [
             'value'   => $value,
@@ -222,11 +224,11 @@ class Response {
 
         header("HTTP/1.1 {$this->status['code']} {$this->status['message']}");
 
-        foreach( $this->headers as $name => $value ) {
+        foreach ($this->headers as $name => $value) {
             header("{$name}: $value");
         }
 
-        foreach( $this->cookies as $name => $cookie ) {
+        foreach ($this->cookies as $name => $cookie) {
             setcookie($name, $cookie['value'], $cookie['expires'], $cookie['path'], $cookie['domain']);
         }
 

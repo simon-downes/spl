@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\util;
 
 use RuntimeException;
@@ -37,18 +38,18 @@ class Timer {
 
     }
 
-    public static function start( string $label = 'start' ): void {
+    public static function start(string $label = 'start'): void {
 
-        if( !static::$started ) {
+        if (!static::$started) {
             static::$started = microtime(true);
             static::$marks[] = [$label, static::$started];
         }
 
     }
 
-    public static function stop( string $label = 'stop' ): void {
+    public static function stop(string $label = 'stop'): void {
 
-        if( static::$started ) {
+        if (static::$started) {
             $now = microtime(true);
             static::$elapsed += $now - static::$started;
             static::$started = 0;
@@ -63,7 +64,7 @@ class Timer {
         static::$marks   = [];
     }
 
-    public static function mark( string $label ): void {
+    public static function mark(string $label): void {
         static::$marks[] = [$label, microtime(true)];
     }
 
@@ -80,7 +81,7 @@ class Timer {
         $elapsed = static::$elapsed;
 
         // currently running so add on the time since the last start
-        if( static::$started ) {
+        if (static::$started) {
             $elapsed += (microtime(true) - static::$started);
         }
 
@@ -97,13 +98,13 @@ class Timer {
         // time since the request started or if not available, the last start time
         $epoch = $_SERVER['REQUEST_TIME_FLOAT'] ?? $start;
 
-        foreach( static::$marks as $i => $mark ) {
+        foreach (static::$marks as $i => $mark) {
 
             list($label, $time) = $mark;
 
             $marks[] = (object) [
                 'label'   => $label,
-                'step'    => ($i > 0) ? $time - static::$marks[$i  -1][1] : 0,
+                'step'    => ($i > 0) ? $time - static::$marks[$i  - 1][1] : 0,
                 'elapsed' => $time - $start,
                 'since_epoch' => $time - $epoch,
             ];

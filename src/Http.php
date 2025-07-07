@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl;
 
 use BadMethodCallException;
@@ -21,18 +22,17 @@ class Http {
      */
     private function __construct() {}
 
-    public static function __callStatic( $method, $arguments ) {
+    public static function __callStatic($method, $arguments) {
 
         $method = strtoupper($method);
 
-        switch( $method ) {
+        switch ($method) {
             case static::GET:
             case static::POST:
             case static::PUT:
             case static::DELETE:
             case static::OPTIONS:
                 return static::request($method, ...$arguments);
-
 
             default:
                 throw new BadMethodCallException(sprintf("Unknown method %s::%s", __CLASS__, $method));
@@ -43,7 +43,7 @@ class Http {
     /**
      * Make an HTTP request and return a simple object representing the response.
      */
-    public static function request( string $method, string $url, array $headers = [], string|array $body = '' ): object {
+    public static function request(string $method, string $url, array $headers = [], string|array $body = ''): object {
 
         $ch = curl_init($url);
 
@@ -54,19 +54,19 @@ class Http {
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
 
         // if we have headers than add them
-        if( !empty($headers) ) {
+        if (!empty($headers)) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         }
 
         // if there's a body then add that
-        if( !empty($body) ) {
+        if (!empty($body)) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $headers);
         }
 
         // send the request
         $response = curl_exec($ch);
 
-        if( $error = curl_error($ch) ) {
+        if ($error = curl_error($ch)) {
             throw new RuntimeException("Curl Error: {$error}");
         }
 
@@ -79,7 +79,7 @@ class Http {
         $headers = static::parse_headers($headers);
 
         // decode json response bodies to an array
-        if( str_starts_with($headers['content-type'] ?? '', 'application/json') ) {
+        if (str_starts_with($headers['content-type'] ?? '', 'application/json')) {
             $body = json_decode($body, true);
         }
 
@@ -91,7 +91,7 @@ class Http {
             'status_code'    => $status_line['status_code'],
             'status_message' => $status_line['status_message'],
             'headers'        => $headers,
-            'body'           => $body
+            'body'           => $body,
         ];
 
     }
@@ -101,17 +101,17 @@ class Http {
      * Header names are normalised to lowercase, duplicate values are concatenated with a comma,
      * the `set-cookie` header is returned as an array (if present)
      */
-    public static function parse_headers( array|string $headers ): array {
+    public static function parse_headers(array|string $headers): array {
 
-        if( is_string($headers) ) {
+        if (is_string($headers)) {
             $headers = explode("\r\n", $headers);
         }
 
         $parsed = [];
 
-        foreach( $headers as $i => $line ) {
+        foreach ($headers as $i => $line) {
 
-            if( $i == 0 && !strpos($line, ':') ) {
+            if ($i == 0 && !strpos($line, ':')) {
                 $parsed['http'] = static::parse_status_line($line);
                 continue;
             }
@@ -123,11 +123,11 @@ class Http {
 
             // combine multiple headers with the same name
             // https://stackoverflow.com/questions/3241326/set-more-than-one-http-header-with-the-same-name
-            if( $key == 'set-cookie' ) {
+            if ($key == 'set-cookie') {
                 $parsed[$key][] = $value;
             }
-            elseif( isset($parsed[$key]) ) {
-                $parsed[$key] .= ','. $value;
+            elseif (isset($parsed[$key])) {
+                $parsed[$key] .= ',' . $value;
             }
             else {
                 $parsed[$key] = $value;
@@ -145,12 +145,12 @@ class Http {
      * - status_code
      * - status_message
      */
-    public static function parse_status_line( string $status_line ): array {
+    public static function parse_status_line(string $status_line): array {
 
         // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
         $parts = explode(" ", trim($status_line), 3);
 
-        if( count($parts) != 3 ) {
+        if (count($parts) != 3) {
             throw new RuntimeException("Invalid status line: {$status_line}");
         }
 

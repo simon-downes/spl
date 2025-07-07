@@ -3,9 +3,14 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\database;
 
-use stdClass, Closure, PDO, PDOStatement, RuntimeException;
+use stdClass;
+use Closure;
+use PDO;
+use PDOStatement;
+use RuntimeException;
 
 use spl\Str;
 
@@ -42,7 +47,7 @@ class Connection {
     /**
      * Create a new database connection.
      */
-    public function __construct( string $url ) {
+    public function __construct(string $url) {
 
         $this->dsn = $this->makeDSN(($url));
 
@@ -59,12 +64,12 @@ class Connection {
     /**
      * Take a URL string and return an object containing the individual parts.
      */
-    protected function makeDSN( string $url ): stdClass {
+    protected function makeDSN(string $url): stdClass {
 
         $parts = Str::parseURL($url);
 
         // no point continuing if it went wrong
-        if( empty($parts) ) {
+        if (empty($parts)) {
             throw new RuntimeException("Invalid database configuration: {$url}");
         }
 
@@ -78,16 +83,16 @@ class Connection {
             'options' => $parts['query'],
         ];
 
-        if( empty($dsn->db) ) {
+        if (empty($dsn->db)) {
             throw new RuntimeException("No database name specified");
         }
 
         // create a PDO DSN string depending on the database type
-        switch( $dsn->type ) {
+        switch ($dsn->type) {
 
             case static::TYPE_MYSQL:
                 $dsn->port = $dsn->port ?: 3306;
-                $dsn->pdo  = sprintf("mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4", $dsn->host, $dsn->port, $dsn->db );
+                $dsn->pdo  = sprintf("mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4", $dsn->host, $dsn->port, $dsn->db);
                 break;
 
             case static::TYPE_POSTGRES:
@@ -110,7 +115,7 @@ class Connection {
 
                 $dsn->pdo = sprintf(
                     'sqlite:%s',
-                    (defined('SPL_ROOT') ? SPL_ROOT. '/' : ''). $dsn->db
+                    (defined('SPL_ROOT') ? SPL_ROOT . '/' : '') . $dsn->db,
                 );
 
                 break;
@@ -141,14 +146,14 @@ class Connection {
         $this->pdo = new PDO(
             $this->dsn->pdo,
             $this->dsn->user,
-            $this->dsn->pass
+            $this->dsn->pass,
         );
 
         $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
         // post connection config - ensure utf8 everywhere
-        switch( $this->dsn->type ) {
+        switch ($this->dsn->type) {
 
             case static::TYPE_MYSQL:
                 $this->pdo->exec("SET NAMES 'utf8mb4'");
@@ -170,16 +175,16 @@ class Connection {
         return clone $this->dsn;
     }
 
-    public function prepare( string|PDOStatement $statement ): PDOStatement {
+    public function prepare(string|PDOStatement $statement): PDOStatement {
 
         // it's PDOStatement so has already been prepared
-        if( is_object($statement) ) {
+        if (is_object($statement)) {
             return $statement;
         }
 
         $key = sha1($statement);
 
-        if( empty($this->statements[$key]) ) {
+        if (empty($this->statements[$key])) {
             $start = microtime(true);
             $this->statements[$key] = $this->pdo->prepare($statement);
             $this->stats->prepare_time += microtime(true) - $start;
@@ -189,7 +194,7 @@ class Connection {
 
     }
 
-    public function query( string|PDOStatement $statement, array $params = [] ): PDOStatement {
+    public function query(string|PDOStatement $statement, array $params = []): PDOStatement {
 
         $statement = $this->prepare($statement);
 
@@ -205,13 +210,13 @@ class Connection {
 
     }
 
-    public function execute( string|PDOStatement $statement, array $params = [] ): int {
+    public function execute(string|PDOStatement $statement, array $params = []): int {
 
         return $this->query($statement, $params)->rowCount();
 
     }
 
-    public function getAll( string|PDOStatement $statement, array $params = [] ): array {
+    public function getAll(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
 
@@ -221,23 +226,23 @@ class Connection {
 
     }
 
-    public function getAllMulti( string|PDOStatement $statement, array $params = [] ): array {
+    public function getAllMulti(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
 
         // get the first resultset
         $result = [
-            $statement->fetchAll()
+            $statement->fetchAll(),
         ];
 
         // now get all the remaining resultsets
-        while( $statement->nextRowset() ) {
+        while ($statement->nextRowset()) {
             $result[] = $statement->fetchAll();
         }
 
         // convert falses to arrays for consistency
-        foreach( $result as &$rowset ) {
-            if( $rowset === false ) {
+        foreach ($result as &$rowset) {
+            if ($rowset === false) {
                 $rowset = [];
             }
         }
@@ -246,13 +251,13 @@ class Connection {
 
     }
 
-    public function getAssoc( string|PDOStatement $statement, array $params = [] ): array {
+    public function getAssoc(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
 
         $result = [];
 
-        while( $row = $statement->fetch() ) {
+        while ($row = $statement->fetch()) {
             $key = array_shift($row);
             $result[$key] = count($row) == 1 ? array_shift($row) : $row;
         }
@@ -261,17 +266,17 @@ class Connection {
 
     }
 
-    public function getAssocMulti( string|PDOStatement $statement, array $params = [] ): array {
+    public function getAssocMulti(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
 
         $result = [];
 
-        while( $row = $statement->fetch() ) {
+        while ($row = $statement->fetch()) {
             $k1 = array_shift($row);
             $k2 = array_shift($row);
             $v  = count($row) == 1 ? array_shift($row) : $row;
-            if( empty($result[$k1]) ) {
+            if (empty($result[$k1])) {
                 $result[$k1] = [];
             }
             $result[$k1][$k2] = $v;
@@ -281,7 +286,7 @@ class Connection {
 
     }
 
-    public function getRow( string|PDOStatement $statement, array $params = [] ): array {
+    public function getRow(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
 
@@ -291,13 +296,13 @@ class Connection {
 
     }
 
-    public function getCol( string|PDOStatement $statement, array $params = [] ): array {
+    public function getCol(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
 
         $result = [];
 
-        while( $row = $statement->fetch() ) {
+        while ($row = $statement->fetch()) {
             $result[] = array_shift($row);
         }
 
@@ -305,7 +310,7 @@ class Connection {
 
     }
 
-    public function getOne( string|PDOStatement $statement, array $params = [] ): mixed {
+    public function getOne(string|PDOStatement $statement, array $params = []): mixed {
 
         $statement = $this->query($statement, $params);
 
@@ -322,7 +327,7 @@ class Connection {
      * - Select queries - the answer will always be 0 as no rows are affected.
      * - Everyday queries - use query() or execute()
      */
-    public function rawExec( string $sql ): int {
+    public function rawExec(string $sql): int {
 
         $start = microtime(true);
         $result = $this->pdo->exec($sql);
@@ -358,23 +363,23 @@ class Connection {
 
     }
 
-    public function insertId( string $name = '' ): string {
+    public function insertId(string $name = ''): string {
 
         return $this->pdo->lastInsertId($name);
 
     }
 
-    public function quote( $value, int $type = PDO::PARAM_STR ): string {
+    public function quote($value, int $type = PDO::PARAM_STR): string {
 
         return $this->pdo->quote($value, $type);
 
     }
 
-    public function quoteIdentifier( string $name ): string {
+    public function quoteIdentifier(string $name): string {
 
         $name = trim($name);
 
-        if( $name == '*' ) {
+        if ($name == '*') {
             return $name;
         }
 
@@ -382,11 +387,11 @@ class Connection {
         $char = '"';
 
         // MySQL uses backticks cos it's special
-        if( $this->dsn->type == static::TYPE_MYSQL ) {
+        if ($this->dsn->type == static::TYPE_MYSQL) {
             $char = '`';
         }
 
-        return $char. $name. $char;
+        return $char . $name . $char;
 
     }
 
@@ -400,8 +405,8 @@ class Connection {
 
         $server = $this->pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
 
-        if( !$this->dsn->type == static::TYPE_SQLITE ) {
-            $server .= ': '. $this->pdo->getAttribute(PDO::ATTR_SERVER_INFO);
+        if (!$this->dsn->type == static::TYPE_SQLITE) {
+            $server .= ': ' . $this->pdo->getAttribute(PDO::ATTR_SERVER_INFO);
         }
 
         return [
@@ -417,13 +422,13 @@ class Connection {
     /**
      * Bind named and positional parameters to a PDOStatement.
      */
-    protected function bindParams( PDOStatement $statement, array $params ): void {
+    protected function bindParams(PDOStatement $statement, array $params): void {
 
-        foreach( $params as $name => $value ) {
+        foreach ($params as $name => $value) {
 
             $type = PDO::PARAM_STR;
 
-            if( is_int($value) ) {
+            if (is_int($value)) {
                 $type = PDO::PARAM_INT;
             }
 

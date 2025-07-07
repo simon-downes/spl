@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\web;
 
 use Throwable;
@@ -17,18 +18,18 @@ class App {
     /**
      * Process the specified web request.
      */
-    public static function handle( Request $request ): void {
+    public static function handle(Request $request): void {
 
         try {
 
-            static::loadRoutes(SPL_ROOT. '/config/routes.php');
+            static::loadRoutes(SPL_ROOT . '/config/routes.php');
 
             // get a handler and some parameters to use
             list($handler, $args) = static::match($request->getPath(), $request->getMethod());
 
             // if handler is a string then we assume it to be an invokable class
             // in which case we need to instantiate it - via container or directly
-            if( is_string($handler) ) {
+            if (is_string($handler)) {
 
                 // TODO: attempt to resolve from container - when we add one
 
@@ -44,23 +45,23 @@ class App {
             $response = call_user_func($handler, ...$args);
 
             // if the response is a string then assume it's html
-            if( is_string($response) ) {
+            if (is_string($response)) {
                 $response = Response::html($response);
             }
             // if the response is an array then convert it to json
-            elseif( is_array($response) ) {
+            elseif (is_array($response)) {
                 $response = Response::json($response);
             }
 
         }
-        catch( Throwable $e ) {
+        catch (Throwable $e) {
 
             $response = Response::fromThrowable($e);
 
             // TODO: render a view based on response code
 
             // for server errors display the default
-            if( $response->isServerError() ) {
+            if ($response->isServerError()) {
                 SPL::error($e);
             }
 
@@ -73,15 +74,15 @@ class App {
     /**
      * Loads routes from the specified file.
      */
-    protected static function loadRoutes( string $file ): void {
+    protected static function loadRoutes(string $file): void {
 
         $routes = require($file);
 
-        foreach( $routes as $regex => $handler ) {
+        foreach ($routes as $regex => $handler) {
 
             $methods = [];
 
-            if( preg_match('/^([A-z| ]+):(.*)/i', $regex, $m) ) {
+            if (preg_match('/^([A-z| ]+):(.*)/i', $regex, $m)) {
                 $methods = explode('|', trim($m[1], '()'));
                 $regex   = $m[2];
             }
@@ -98,15 +99,15 @@ class App {
      * Try and match the requested path against available routes.
      * @return array a tuple containing the handler for the request and the parameters to use
      */
-    protected static function match( string $path, string $method ): array {
+    protected static function match(string $path, string $method): array {
 
-        foreach( static::$routes as $regex => $handlers ) {
+        foreach (static::$routes as $regex => $handlers) {
 
-            if( preg_match(";^{$regex}$;", $path, $parameters) ) {
+            if (preg_match(";^{$regex}$;", $path, $parameters)) {
 
                 $handler = $handlers[$method] ?? false;
 
-                if( !$handler ) {
+                if (!$handler) {
                     throw WebException::methodNotAllowed($method, $path);
                 }
 

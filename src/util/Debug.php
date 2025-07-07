@@ -3,9 +3,13 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\util;
 
-use Throwable, ErrorException, ReflectionClass, ReflectionObject;
+use Throwable;
+use ErrorException;
+use ReflectionClass;
+use ReflectionObject;
 
 class Debug {
 
@@ -18,7 +22,7 @@ class Debug {
         $this->stack  = [];
     }
 
-    public function toString( $var ): string {
+    public function toString($var): string {
 
         $getters = [
             'is_null'     => 'getNull',
@@ -33,8 +37,8 @@ class Debug {
 
         $result = '';
 
-        foreach( $getters as $test => $method ) {
-            if( $test($var) ) {
+        foreach ($getters as $test => $method) {
+            if ($test($var)) {
                 $result = $this->$method($var);
                 break;
             }
@@ -42,7 +46,7 @@ class Debug {
 
         // if result is empty then $var didn't fall into one of the know types
         // so we just fallback to var_dump()
-        if( empty($result) ) {
+        if (empty($result)) {
             ob_start();
             var_dump($var);
             $result = ob_get_clean();
@@ -56,33 +60,33 @@ class Debug {
         return 'null';
     }
 
-    public function getBoolean( bool $var ): string {
+    public function getBoolean(bool $var): string {
         return sprintf('bool(%s)', $var ? 'true' : 'false');
     }
 
-    public function getInteger( int $var ): string {
+    public function getInteger(int $var): string {
         return "int({$var})";
     }
 
-    public function getFloat( float $var ): string {
+    public function getFloat(float $var): string {
         return "float({$var})";
     }
 
-    public function getString( string $str ): string {
+    public function getString(string $str): string {
         $enc = mb_detect_encoding($str, ['UTF-8', 'WINDOWS-1252', 'ISO-8859-1', 'ASCII'], true);
         $enc = ($enc == 'ASCII') ? '' : "; $enc";
         return sprintf('string(%d%s) "%s"', strlen($str), $enc, $str);
     }
 
-    public function getArray( array $arr ): string {
+    public function getArray(array $arr): string {
 
         $this->depth++;
 
         $item = sprintf("array(%d) {\n", count($arr));
-        foreach( $arr as $k => $v ) {
+        foreach ($arr as $k => $v) {
             $item .= sprintf("%s[%s] => %s\n", str_repeat("\t", $this->depth), $k, $this->toString($v));
         }
-        $item .= str_repeat("\t", $this->depth - 1). "}";
+        $item .= str_repeat("\t", $this->depth - 1) . "}";
 
         $this->depth--;
 
@@ -90,12 +94,12 @@ class Debug {
 
     }
 
-    public function getObject( object $obj ): string {
+    public function getObject(object $obj): string {
 
-        if( $item = $this->recursionCheck($obj) ) {
+        if ($item = $this->recursionCheck($obj)) {
             return $item;
         }
-        elseif( $obj instanceof Throwable ) {
+        elseif ($obj instanceof Throwable) {
             return $this->getThrowable($obj);
         }
 
@@ -103,11 +107,11 @@ class Debug {
 
         $this->depth++;
 
-        $item = get_class($obj). " {\n";
+        $item = get_class($obj) . " {\n";
 
         $item .= $this->getObjectProperties($obj);
 
-        $item .= str_repeat("\t", $this->depth - 1). "}";
+        $item .= str_repeat("\t", $this->depth - 1) . "}";
 
         $this->depth--;
 
@@ -117,7 +121,7 @@ class Debug {
 
     }
 
-    public function getThrowable( Throwable $e ): string {
+    public function getThrowable(Throwable $e): string {
 
         $item = get_class($e);
 
@@ -130,7 +134,7 @@ class Debug {
             'previous' => $e->getPrevious(),
         ];
 
-        if( $e instanceof ErrorException ) {
+        if ($e instanceof ErrorException) {
             $lookup = [
                 E_ERROR             => 'ERROR',
                 E_WARNING           => 'WARNING',
@@ -159,7 +163,7 @@ class Debug {
 
     }
 
-    public function getResource( $resource ): string {
+    public function getResource($resource): string {
 
         $type = get_resource_type($resource);
 
@@ -167,16 +171,16 @@ class Debug {
         $item = sprintf("resource(%s; %s)", substr($item, strpos($item, '#')), $type);
 
         // try and get some additional info about the resource
-        switch( $type ) {
+        switch ($type) {
             case 'stream':
                 $item .= $this->getMeta(
-                    stream_get_meta_data($resource)
+                    stream_get_meta_data($resource),
                 );
                 break;
 
             case 'curl':
                 $item .= $this->getMeta(
-                    curl_getinfo($resource)
+                    curl_getinfo($resource),
                 );
                 break;
 
@@ -186,17 +190,17 @@ class Debug {
 
     }
 
-    protected function getMeta( array $meta ): string {
+    protected function getMeta(array $meta): string {
 
         $this->depth++;
 
         $width = max(array_map('strlen', array_keys($meta))) + 1;
 
         $item = " {\n";
-        foreach( $meta as $k => $v ) {
-            $item .= sprintf("%s%s: %s\n", str_repeat("\t", $this->depth), str_pad(ucwords(str_replace('_', ' ', $k)), $width) , $this->toString($v));
+        foreach ($meta as $k => $v) {
+            $item .= sprintf("%s%s: %s\n", str_repeat("\t", $this->depth), str_pad(ucwords(str_replace('_', ' ', $k)), $width), $this->toString($v));
         }
-        $item .= str_repeat("\t", $this->depth - 1). "}";
+        $item .= str_repeat("\t", $this->depth - 1) . "}";
 
         $this->depth--;
 
@@ -204,24 +208,24 @@ class Debug {
 
     }
 
-    protected function getTrace( array $trace ): array {
+    protected function getTrace(array $trace): array {
 
         $lines = [];
 
-        foreach( $trace as $i => $frame ) {
+        foreach ($trace as $i => $frame) {
 
             $line = '';
 
-            if( isset($frame['class']) ) {
-                $line .= $frame['class']. $frame['type'];
+            if (isset($frame['class'])) {
+                $line .= $frame['class'] . $frame['type'];
             }
 
-            $line .= $frame['function']. '()';
+            $line .= $frame['function'] . '()';
 
-            if( isset($frame['file']) ) {
-                $line .= ' ['. $frame['file'];
-                if( isset($frame['line']) ) {
-                    $line .= ':'. $frame['line'];
+            if (isset($frame['file'])) {
+                $line .= ' [' . $frame['file'];
+                if (isset($frame['line'])) {
+                    $line .= ':' . $frame['line'];
                 }
                 $line .= ']';
             }
@@ -234,14 +238,14 @@ class Debug {
 
     }
 
-    protected function getObjectProperties( object $obj ): string {
+    protected function getObjectProperties(object $obj): string {
 
         // we use reflection to access all the object's properties (public, protected and private)
         $r = new ReflectionObject($obj);
 
         $item = '';
 
-        foreach( $this->getClassProperties($r) as $p ) {
+        foreach ($this->getClassProperties($r) as $p) {
             $p->setAccessible(true);
             $item .= sprintf("%s%s: %s\n", str_repeat("\t", $this->depth), $p->name, $this->toString($p->getValue($obj)));
         }
@@ -250,17 +254,17 @@ class Debug {
 
     }
 
-    protected function getClassProperties( ReflectionClass $class ): array {
+    protected function getClassProperties(ReflectionClass $class): array {
 
         $properties = [];
 
-        foreach( $class->getProperties() as $property ) {
+        foreach ($class->getProperties() as $property) {
             $properties[$property->getName()] = $property;
         }
 
-        if( $parent = $class->getParentClass() ) {
+        if ($parent = $class->getParentClass()) {
             $parent_props = $this->getClassProperties($parent);
-            if(count($parent_props) > 0) {
+            if (count($parent_props) > 0) {
                 $properties = array_merge($parent_props, $properties);
             }
         }
@@ -269,12 +273,12 @@ class Debug {
 
     }
 
-    protected function recursionCheck( object $obj ): string {
+    protected function recursionCheck(object $obj): string {
 
-        if( end($this->stack) === $obj ) {
+        if (end($this->stack) === $obj) {
             return '**SELF**';
         }
-        elseif( in_array($obj, $this->stack) ) {
+        elseif (in_array($obj, $this->stack)) {
             return '**RECURSION**';
         }
 

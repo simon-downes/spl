@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\util;
 
 use RuntimeException;
@@ -21,16 +22,16 @@ class Env {
         return $_ENV + getenv();
     }
 
-    public static function get( string $var, mixed $default = null ): mixed {
+    public static function get(string $var, mixed $default = null): mixed {
 
         $v = static::getRaw($var);
 
-        if( $v === false ) {
+        if ($v === false) {
             return $default;
         }
 
         // convert certain strings to their typed values
-        switch( strtolower($v) ) {
+        switch (strtolower($v)) {
             case 'true':
                 return true;
 
@@ -41,7 +42,7 @@ class Env {
                 return null;
         }
 
-        if( preg_match('/^([\'"])(.*)\1$/', (string) $v, $matches) ) {
+        if (preg_match('/^([\'"])(.*)\1$/', (string) $v, $matches)) {
             return $matches[2];
         }
 
@@ -56,7 +57,7 @@ class Env {
      * If no match is found then getenv() is used.
      * If the variable cannot be found then the function returns false.
      */
-    protected static function getRaw( string $var ): mixed {
+    protected static function getRaw(string $var): mixed {
 
         return $_ENV[$var] ?? getenv($var);
 
@@ -65,9 +66,9 @@ class Env {
     /**
      * Load environment variables from the specified file with an error if it doesn't exist.
      */
-    public static function load( string $file ): void {
+    public static function load(string $file): void {
 
-        if( !is_readable($file) ) {
+        if (!is_readable($file)) {
             throw new RuntimeException("Cannot read environment file: {$file}");
         }
 
@@ -78,10 +79,10 @@ class Env {
     /**
      * Load environment variables from the specified file if it exists.
      */
-    public static function safeLoad( string $file ): void {
+    public static function safeLoad(string $file): void {
 
         # can't read the file so don't do anything
-        if( !is_readable($file) ) {
+        if (!is_readable($file)) {
             return;
         }
 
@@ -90,7 +91,7 @@ class Env {
 
         $lines = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
-        foreach( $lines as $line ) {
+        foreach ($lines as $line) {
 
             // comment so ignore it
             if (strpos(trim($line), '#') === 0) {
@@ -101,7 +102,7 @@ class Env {
             list($k, $v) = array_map('trim', explode('=', $line, 2));
 
             # parse the value and add it to the environment if it's not been defined already
-            if( !isset($current[$k]) ) {
+            if (!isset($current[$k])) {
                 $_ENV[$k] = static::parseValue($v);
             }
 
@@ -113,11 +114,11 @@ class Env {
      * Given a value string from an env file, parse it to resolve any embedded variables and remove surrounding quotes.
      * TODO: remove end of line comments?
      */
-    protected static function parseValue( string $value ): string {
+    protected static function parseValue(string $value): string {
 
         preg_match_all('/\${.*?}/', $value, $matches);
 
-        foreach( $matches[0] as $var ) {
+        foreach ($matches[0] as $var) {
 
             // remove the ${ } construct
             $var_name = substr($var, 2, -1);
@@ -126,7 +127,7 @@ class Env {
             $v = static::getRaw($var_name);
 
             // invalid variable so throw an exception
-            if( $v === false ) {
+            if ($v === false) {
                 throw new RuntimeException("Undefined environment variable: '{$var_name}'");
             }
 

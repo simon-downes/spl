@@ -3,6 +3,7 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl\web;
 
 class Request {
@@ -11,14 +12,14 @@ class Request {
 
         $query = [];
 
-        if( $_SERVER['QUERY_STRING'] ) {
+        if ($_SERVER['QUERY_STRING']) {
             parse_str($_SERVER['QUERY_STRING'], $query);
         }
 
         $headers = [];
 
-        foreach( $_SERVER as $k => $v ) {
-            if( str_starts_with($k, 'HTTP_') ) {
+        foreach ($_SERVER as $k => $v) {
+            if (str_starts_with($k, 'HTTP_')) {
                 // strip HTTP_ prefix, replace _ with -
                 $headers[str_replace('_', '-', substr($k, 5))] = $v;
             }
@@ -26,7 +27,7 @@ class Request {
 
         $body = $_POST;
 
-        if( empty($body) ) {
+        if (empty($body)) {
             $body = file_get_contents("php://input");
         }
 
@@ -38,7 +39,7 @@ class Request {
         return new static(
             $_SERVER['REQUEST_METHOD'],
             $_SERVER['HTTP_HOST'],
-            str_replace('?'. $_SERVER['QUERY_STRING'], '', $_SERVER['REQUEST_URI']),
+            str_replace('?' . $_SERVER['QUERY_STRING'], '', $_SERVER['REQUEST_URI']),
             $query,
             $body,
             $headers,
@@ -70,16 +71,16 @@ class Request {
         ksort($this->headers);
         ksort($this->cookies);
 
-        if( is_string($this->body) && strtolower($this->getHeader('content-type')) == 'application/json' ) {
+        if (is_string($this->body) && strtolower($this->getHeader('content-type')) == 'application/json') {
             $decoded = json_decode($this->body, true, flags: JSON_THROW_ON_ERROR);
-            if( $decoded ) {
+            if ($decoded) {
                 $this->body = $decoded;
             }
         }
 
         $forwarded_for = explode(',', $this->getHeader('x-forwarded-for'));
 
-        if( !empty($forwarded_for[0]) ) {
+        if (!empty($forwarded_for[0])) {
             $this->client_ip = trim($forwarded_for[0]);
         }
 
@@ -97,7 +98,7 @@ class Request {
         return $this->path;
     }
 
-    public function lookup( $k, mixed $default = null ): mixed {
+    public function lookup($k, mixed $default = null): mixed {
         return $this->query[$k] ?? $this->body[$k] ?? $default;
     }
 
@@ -105,11 +106,11 @@ class Request {
         return $this->body;
     }
 
-    public function getHeader( string $name ): string {
+    public function getHeader(string $name): string {
         return $this->headers[strtolower($name)] ?? '';
     }
 
-    public function getCookie( string $name ): string {
+    public function getCookie(string $name): string {
         return $this->cookies[$name] ?? '';
     }
 
@@ -117,11 +118,11 @@ class Request {
         return $this->client_ip;
     }
 
-    public function getAttribute( string $name, mixed $default = null ): mixed {
+    public function getAttribute(string $name, mixed $default = null): mixed {
         return $this->attributes[$name] ?? $default;
     }
 
-    public function setAttribute( string $name, mixed $value ): void {
+    public function setAttribute(string $name, mixed $value): void {
         $this->attributes[$name] = $value;
     }
 

@@ -3,13 +3,14 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl;
 
 use DateTimeInterface;
 
 class Str {
 
-    protected static $plural = array(
+    protected static $plural = [
         '/(quiz)$/i'               => "$1zes",
         '/^(ox)$/i'                => "$1en",
         '/([m|l])ouse$/i'          => "$1ice",
@@ -21,16 +22,16 @@ class Str {
         '/(shea|lea|loa|thie)f$/i' => "$1ves",
         '/sis$/i'                  => "ses",
         '/([ti])um$/i'             => "$1a",
-        '/(tomat|potat|ech|her|vet)o$/i'=> "$1oes",
+        '/(tomat|potat|ech|her|vet)o$/i' => "$1oes",
         '/(bu)s$/i'                => "$1ses",
         '/(alias)$/i'              => "$1es",
         '/(ax|test)is$/i'          => "$1es",
         '/(us)$/i'                 => "$1es",
         '/s$/i'                    => "s",
-        '/$/'                      => "s"
-    );
+        '/$/'                      => "s",
+    ];
 
-    protected static $singular = array(
+    protected static $singular = [
         '/(quiz)zes$/i'             => "$1",
         '/(matr)ices$/i'            => "$1ix",
         '/(vert|ind)ices$/i'        => "$1ex",
@@ -49,7 +50,7 @@ class Str {
         '/(tive)s$/i'               => "$1",
         '/(hive)s$/i'               => "$1",
         '/(li|wi|kni)ves$/i'        => "$1fe",
-        '/(shea|loa|lea|thie)ves$/i'=> "$1f",
+        '/(shea|loa|lea|thie)ves$/i' => "$1f",
         '/(^analy)ses$/i'           => "$1sis",
         '/((a)naly|(b)a|(d)iagno|(p)arenthe|(p)rogno|(s)ynop|(t)he)ses$/i'  => "$1$2sis",
         '/([ti])a$/i'               => "$1um",
@@ -57,10 +58,10 @@ class Str {
         '/(h|bl)ouses$/i'           => "$1ouse",
         '/(corpse)s$/i'             => "$1",
         '/(us)es$/i'                => "$1",
-        '/s$/i'                     => ""
-    );
+        '/s$/i'                     => "",
+    ];
 
-    protected static $irregular = array(
+    protected static $irregular = [
         'move'   => 'moves',
         'foot'   => 'feet',
         'goose'  => 'geese',
@@ -68,10 +69,10 @@ class Str {
         'child'  => 'children',
         'man'    => 'men',
         'tooth'  => 'teeth',
-        'person' => 'people'
-    );
+        'person' => 'people',
+    ];
 
-    protected static $uncountable = array(
+    protected static $uncountable = [
         'sheep',
         'fish',
         'deer',
@@ -80,8 +81,8 @@ class Str {
         'money',
         'rice',
         'information',
-        'equipment'
-    );
+        'equipment',
+    ];
 
     /**
      * Helpers cannot be instantiated.
@@ -97,23 +98,23 @@ class Str {
      * @param  array        $defaults   an array of default values for components
      * @return array|null   Returns false if the URL could not be parsed
      */
-    public static function parseURL( string $url, array $defaults = [] ) : array|null {
+    public static function parseURL(string $url, array $defaults = []): array|null {
 
         $parts = parse_url(urldecode($url));
 
-        if( $parts === false ) {
+        if ($parts === false) {
             return null;
         }
 
         $url = [];
 
-        foreach( ['scheme', 'host', 'port', 'user', 'pass', 'path'] as $k ) {
+        foreach (['scheme', 'host', 'port', 'user', 'pass', 'path'] as $k) {
             $url[$k] = $parts[$k] ?? $defaults[$k] ?? '';
         }
 
         $url['query'] = [];
 
-        if( isset($parts['query']) ) {
+        if (isset($parts['query'])) {
             parse_str($parts['query'], $url['query']);
         }
 
@@ -121,26 +122,26 @@ class Str {
 
     }
 
-    public static function buildURL( array $parts, bool $show_pw = false ): string {
+    public static function buildURL(array $parts, bool $show_pw = false): string {
 
         $url = '';
 
-        if( isset($parts['scheme']) ) {
-            $url .= $parts['scheme']. '://';
+        if (isset($parts['scheme'])) {
+            $url .= $parts['scheme'] . '://';
         }
 
-        if( isset($parts['user']) ) {
+        if (isset($parts['user'])) {
             $url .= $parts['user'];
-            if( isset($parts['pass']) ) {
-                $url .= ':'. ($show_pw ? $parts['pass'] : '<password>');
+            if (isset($parts['pass'])) {
+                $url .= ':' . ($show_pw ? $parts['pass'] : '<password>');
             }
             $url .= '@';
         }
 
-        if( isset($parts['host']) ) {
+        if (isset($parts['host'])) {
             $url .= $parts['host'];
-            if( isset($parts['port']) ) {
-                $url .= ':'. $parts['port'];
+            if (isset($parts['port'])) {
+                $url .= ':' . $parts['port'];
             }
         }
 
@@ -153,14 +154,17 @@ class Str {
     /**
      * Convert a camel-cased string to lower case with underscores
      */
-    public static function uncamelise( string $str ): string {
+    public static function uncamelise(string $str): string {
         return mb_strtolower(
             preg_replace(
-                '/^A-Z^a-z^0-9]+/', '_',
-                preg_replace('/([a-z\d])([A-Z])/u', '$1_$2',
-                    preg_replace('/([A-Z+])([A-Z][a-z])/u', '$1_$2', $str)
-                )
-            )
+                '/^A-Z^a-z^0-9]+/',
+                '_',
+                preg_replace(
+                    '/([a-z\d])([A-Z])/u',
+                    '$1_$2',
+                    preg_replace('/([A-Z+])([A-Z][a-z])/u', '$1_$2', $str),
+                ),
+            ),
         );
     }
 
@@ -169,7 +173,7 @@ class Str {
      * Converts any accent characters to their equivalent normal characters
      * and then any sequence of two or more non-alphanumeric characters to a dash.
      */
-    public static function slugify( string $str ): string {
+    public static function slugify(string $str): string {
         $chars = ['&' => '-and-', '€' => '-EUR-', '£' => '-GBP-', '$' => '-USD-'];
         return trim(preg_replace('/([^a-z0-9]+)/u', '-', mb_strtolower(strtr(static::removeAccents($str), $chars))), '-');
     }
@@ -177,7 +181,7 @@ class Str {
     /**
      * Converts accent characters to their ASCII counterparts.
      */
-    public static function removeAccents( string $str ): string {
+    public static function removeAccents(string $str): string {
         $chars = [
             'ª' => 'a', 'º' => 'o', 'À' => 'A', 'Á' => 'A', 'Â' => 'A', 'Ã' => 'A',
             'Ä' => 'A', 'Å' => 'A', 'Ā' => 'A', 'Ă' => 'A', 'Ą' => 'A', 'à' => 'a',
@@ -220,12 +224,12 @@ class Str {
      * Return the ordinal suffix (st, nd, rd, th) of a number.
      * Taken from: http://stackoverflow.com/questions/3109978/php-display-number-with-ordinal-suffix
      */
-    public static function ordinal( int $n ): string {
+    public static function ordinal(int $n): string {
 
         $ends = ['th','st','nd','rd','th','th','th','th','th','th'];
 
         // if tens digit is 1, 2 or 3 then use th instead of usual ordinal
-        if( ($n % 100) >= 11 && ($n % 100) <= 13 ) {
+        if (($n % 100) >= 11 && ($n % 100) <= 13) {
             return "{$n}th";
         }
 
@@ -237,13 +241,13 @@ class Str {
      * Convert a number of bytes to a human-friendly string using the largest suitable unit.
      * Taken from: http://www.php.net/manual/de/function.filesize.php#91477
      */
-    public static function sizeFormat( int $bytes, int $precision ): string {
+    public static function sizeFormat(int $bytes, int $precision): string {
         $units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
         $bytes = max($bytes, 0);
         $pow   = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow   = min($pow, count($units) - 1);
         $bytes /= (1 << (10 * $pow));
-        return round($bytes, $precision). ' '. $units[$pow];
+        return round($bytes, $precision) . ' ' . $units[$pow];
     }
 
     /**
@@ -253,9 +257,9 @@ class Str {
      * Also added a couple of other tags to the really bad list.
      * Handles most of the XSS vectors listed at http://ha.ckers.org/xss.html
      */
-    public static function xssClean( string $str, string $charset = 'UTF-8' ): string {
+    public static function xssClean(string $str, string $charset = 'UTF-8'): string {
 
-        if( empty($str) ) {
+        if (empty($str)) {
             return $str;
         }
 
@@ -298,7 +302,7 @@ class Str {
             $old = $str;
             $str = preg_replace('#</*(?:applet|b(?:ase|gsound|link)|body|embed|frame(?:set)?|head|html|i(?:frame|layer)|l(?:ayer|ink)|meta|object|s(?:cript|tyle)|title|xml)[^>]*+>#iu', '', $str);
         }
-        while( $old !== $str );
+        while ($old !== $str);
 
         return $str;
 
@@ -307,13 +311,13 @@ class Str {
     /**
      * Remove every control character except newline (10/x0A) carriage return (13/x0D), and horizontal tab (09/x09)
      */
-    public static function stripControlChars( string $str ): string {
+    public static function stripControlChars(string $str): string {
 
         do {
             // 00-08, 11, 12, 14-31, 127
             $str = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/Su', '', $str, -1, $count);
         }
-        while( $count );
+        while ($count);
 
         return $str;
 
@@ -323,30 +327,30 @@ class Str {
      * Ensures that a string has consistent line-endings.
      * All line-ending are converted to LF with maximum of two consecutive.
      */
-    public static function normaliseLineEndings( string $str ): string {
+    public static function normaliseLineEndings(string $str): string {
         $str = str_replace("\r\n", "\n", $str);
         $str = str_replace("\r", "\n", $str);
         return preg_replace("/\n{2,}/", "\n\n", $str);
     }
 
-    public static function pluralise( string $str ): string {
+    public static function pluralise(string $str): string {
 
         // save some time in the case that singular and plural are the same
-        if( in_array(mb_strtolower($str), self::$uncountable) ) {
+        if (in_array(mb_strtolower($str), self::$uncountable)) {
             return $str;
         }
 
         // check for irregular singular forms
-        foreach( self::$irregular as $pattern => $result ) {
+        foreach (self::$irregular as $pattern => $result) {
             $pattern = '/' . $pattern . '$/iu';
-            if( preg_match($pattern, $str) ) {
+            if (preg_match($pattern, $str)) {
                 return preg_replace($pattern, $result, $str);
             }
         }
 
         // check for matches using regular expressions
-        foreach( self::$plural as $pattern => $result ) {
-            if( preg_match($pattern, $str) ) {
+        foreach (self::$plural as $pattern => $result) {
+            if (preg_match($pattern, $str)) {
                 return preg_replace($pattern, $result, $str);
             }
         }
@@ -355,24 +359,24 @@ class Str {
 
     }
 
-    public static function singularise( string $str ): string {
+    public static function singularise(string $str): string {
 
         // save some time in the case that singular and plural are the same
-        if( in_array(mb_strtolower($str), self::$uncountable) ) {
+        if (in_array(mb_strtolower($str), self::$uncountable)) {
             return $str;
         }
 
         // check for irregular plural forms
-        foreach( self::$irregular as $result => $pattern ) {
+        foreach (self::$irregular as $result => $pattern) {
             $pattern = '/' . $pattern . '$/iu';
-            if( preg_match($pattern, $str) ) {
+            if (preg_match($pattern, $str)) {
                 return preg_replace($pattern, $result, $str);
             }
         }
 
         // check for matches using regular expressions
-        foreach( self::$singular as $pattern => $result ) {
-            if( preg_match($pattern, $str) ) {
+        foreach (self::$singular as $pattern => $result) {
+            if (preg_match($pattern, $str)) {
                 return preg_replace($pattern, $result, $str);
             }
         }
@@ -385,16 +389,16 @@ class Str {
      * Converts a string representation containing one or more of hours, minutes and seconds into a total number of seconds.
      * e.g. seconds("3 hours 4 minutes 10 seconds"), seconds("5min"), seconds("4.5h")
      */
-    public static function seconds( string $str ): int {
+    public static function seconds(string $str): int {
 
         $hours   = 0;
         $minutes = 0;
         $seconds = 0;
 
-        if( preg_match('/^\d+:\d+$/', $str) ) {
+        if (preg_match('/^\d+:\d+$/', $str)) {
             list(, $minutes, $seconds) = explode(':', $str);
         }
-        elseif( preg_match('/^\d+:\d+:\d+$/', $str) ) {
+        elseif (preg_match('/^\d+:\d+:\d+$/', $str)) {
             list($hours, $minutes, $seconds) = explode(':', $str);
         }
         else {
@@ -408,9 +412,9 @@ class Str {
             // compress scales and units together so '2 hours' => '2hours'
             $str = preg_replace('/([0-9.]+) ([cdehimnorstu]+)/u', '$1$2', $str);
 
-            foreach( explode(' ', $str) as $item ) {
+            foreach (explode(' ', $str) as $item) {
 
-                if( !preg_match('/^([0-9.]+)([cdehimnorstu]+)$/u', $item, $m) ) {
+                if (!preg_match('/^([0-9.]+)([cdehimnorstu]+)$/u', $item, $m)) {
                     return 0;
                 }
 
@@ -418,13 +422,13 @@ class Str {
 
                 $scale = ((float) $scale != (int) $scale) ? (float) $scale : (int) $scale;
 
-                if( preg_match('/^h(r|our|ours)?$/u', $unit) && !$hours ) {
+                if (preg_match('/^h(r|our|ours)?$/u', $unit) && !$hours) {
                     $hours = $scale;
                 }
-                elseif( preg_match('/^m(in|ins|inute|inutes)?$/u', $unit) && !$minutes ) {
+                elseif (preg_match('/^m(in|ins|inute|inutes)?$/u', $unit) && !$minutes) {
                     $minutes = $scale;
                 }
-                elseif( preg_match('/^s(ec|ecs|econd|econds)?$/u', $unit) && !$seconds ) {
+                elseif (preg_match('/^s(ec|ecs|econd|econds)?$/u', $unit) && !$seconds) {
                     $seconds = $scale;
                 }
                 else {
@@ -439,13 +443,12 @@ class Str {
 
     }
 
-    public static function date( int|string|DateTimeInterface $time = '' ): string {
+    public static function date(int|string|DateTimeInterface $time = ''): string {
         return date('Y-m-d', SPL::makeTimestamp($time));
     }
 
-    public static function datetime( int|string|DateTimeInterface $time = '' ): string {
+    public static function datetime(int|string|DateTimeInterface $time = ''): string {
         return date('Y-m-d H:i:s', SPL::makeTimestamp($time));
     }
-
 
 }

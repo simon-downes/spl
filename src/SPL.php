@@ -3,10 +3,12 @@
  * This file is part of the simon-downes/spl package which is distributed under the MIT License.
  * See LICENSE.md or go to https://github.com/simon-downes/spl for full license details.
  */
+
 namespace spl;
 
 use DateTimeInterface;
-use Throwable, LogicException;
+use Throwable;
+use LogicException;
 
 use spl\util\Config;
 use spl\util\Debug;
@@ -31,19 +33,19 @@ class SPL {
      * @param string $directory
      * @return void
      */
-    public static function init( string $directory = '', $load_env = true ): void {
+    public static function init(string $directory = '', $load_env = true): void {
 
         // we've already run init so nothing to do
-        if( defined('SPL_ROOT') ) {
+        if (defined('SPL_ROOT')) {
             return;
         }
 
         define('SPL_ROOT', $directory ? realpath($directory) : getcwd());
 
         // load environment variables from .env if specified and file exists
-        $load_env && Env::safeLoad(SPL_ROOT. '/.env');
+        $load_env && Env::safeLoad(SPL_ROOT . '/.env');
 
-        define('SPL_DEBUG', match( env('APP_DEBUG', '') ) {
+        define('SPL_DEBUG', match (env('APP_DEBUG', '')) {
 
             // explicitly set so use that
             true => true,
@@ -53,15 +55,15 @@ class SPL {
             '' => !(bool) preg_match('/^prod/i', env('APP_ENV', 'dev')),
 
             // defined as an unknown string so set to false for safety
-            default =>false,
+            default => false,
 
         });
 
         $log_file = env('APP_LOG_FILE', '');
 
         // not an absolute path so make it relative to the root directory
-        if( $log_file && substr($log_file, 0, 1) != '/' ) {
-            $log_file = SPL_ROOT. '/'. $log_file;
+        if ($log_file && substr($log_file, 0, 1) != '/') {
+            $log_file = SPL_ROOT . '/' . $log_file;
         }
 
     }
@@ -69,12 +71,12 @@ class SPL {
     /**
      * Return the value of a configuration setting.
      */
-    public static function config( string $key, mixed $default = null ): mixed {
+    public static function config(string $key, mixed $default = null): mixed {
 
         static $config;
 
-        if( empty($config) ) {
-            $config = Config::safeLoad(SPL_ROOT. '/config/config.php');
+        if (empty($config)) {
+            $config = Config::safeLoad(SPL_ROOT . '/config/config.php');
         }
 
         return $config->get($key, $default);
@@ -84,7 +86,7 @@ class SPL {
     /**
      * Dump a variable to StdOut.
      */
-    public static function dump( mixed $var  ) {
+    public static function dump(mixed $var) {
 
         echo (new Debug())->toString($var), "\n";
 
@@ -93,19 +95,19 @@ class SPL {
     /**
      * Render a Twig template with the specified context.
      */
-    public static function render( string $template, array $context = [] ) {
+    public static function render(string $template, array $context = []) {
 
         static $twig;
 
-        if( empty($twig) ) {
+        if (empty($twig)) {
 
             $twig = new TwigEnvironment(
-                new TwigLoader(static::config('twig.templates', SPL_ROOT. '/templates')),
+                new TwigLoader(static::config('twig.templates', SPL_ROOT . '/templates')),
                 [
                     'cache'       => SPL::config('twig.cache', false),
                     'debug'       => SPL_DEBUG,
                     'auto_reload' => true,
-                ]
+                ],
             );
         }
 
@@ -113,13 +115,13 @@ class SPL {
 
     }
 
-    public static function run( string $directory ): void {
+    public static function run(string $directory): void {
 
         try {
 
             static::init($directory);
 
-            if( SPL_CLI ) {
+            if (SPL_CLI) {
 
             }
             else {
@@ -129,7 +131,7 @@ class SPL {
             }
 
         }
-        catch( Throwable $e ) {
+        catch (Throwable $e) {
 
             static::error($e);
 
@@ -137,7 +139,7 @@ class SPL {
 
     }
 
-    public static function error( Throwable $error, int $exit = 1 ): void {
+    public static function error(Throwable $error, int $exit = 1): void {
 
         $trace = (new Debug())->toString($error);
 
@@ -146,31 +148,31 @@ class SPL {
 
         // for cli scripts we've already logged the error to the correct place
         // but for web pages we need to return something to the user
-        if( !SPL_CLI ) {
-            require __DIR__. '/error.php';
+        if (!SPL_CLI) {
+            require __DIR__ . '/error.php';
         }
 
-        if( $exit ) {
+        if ($exit) {
             exit($exit);
         }
 
     }
 
-    public static function makeTimestamp( int|string|DateTimeInterface $time ): int {
+    public static function makeTimestamp(int|string|DateTimeInterface $time): int {
 
-        if( is_numeric($time) ) {
+        if (is_numeric($time)) {
             return (int) $time;
         }
-        elseif( $time instanceof DateTimeInterface ) {
+        elseif ($time instanceof DateTimeInterface) {
             return $time->getTimestamp();
         }
-        elseif( $time === '' ) {
+        elseif ($time === '') {
             return time();
         }
 
         $ts = strtotime($time);
 
-        if( $ts === false ) {
+        if ($ts === false) {
             throw new LogicException("Unable convert {$time} to a valid timestamp");
         }
 
