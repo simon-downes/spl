@@ -96,7 +96,7 @@ class Response {
 
     }
 
-    public static function redirect($url, $permanent = false): static {
+    public static function redirect(string $url, bool $permanent = false): static {
         return (new static($permanent ? 301 : 302))->setHeader('location', $url);
     }
 
@@ -124,7 +124,7 @@ class Response {
 
     }
 
-    public function __call($name, $arguments) {
+    public function __call(string $name, array $arguments): mixed {
 
         if (str_starts_with($name, 'get')) {
 
@@ -153,11 +153,11 @@ class Response {
 
     }
 
-    public function isRedirect() {
+    public function isRedirect(): bool {
         return in_array($this->status['code'], [301, 302, 303, 307, 308], true);
     }
 
-    public function isServerError() {
+    public function isServerError(): bool {
         return $this->status['code'] >= 500;
     }
 
@@ -176,7 +176,7 @@ class Response {
 
     }
 
-    public function setBody(string $body, string $content_type = 'text/html', $charset = 'UTF-8') {
+    public function setBody(string $body, string $content_type = 'text/html', string $charset = 'UTF-8'): static {
 
         $this->body = $body;
 
@@ -191,7 +191,7 @@ class Response {
 
     }
 
-    public function setHeader($name = null, $value = null): static {
+    public function setHeader(string $name, ?string $value = null): static {
 
         // normalise header names
         $name = strtolower($name);
@@ -199,16 +199,22 @@ class Response {
         // if null then unset header
         if ($value === null) {
             unset($this->headers[$name]);
+            return $this;
         }
-        else {
-            $this->headers[$name] = $value;
-        }
+
+        $this->headers[$name] = $value;
 
         return $this;
 
     }
 
-    public function setCookie($name = null, $value = null, $expires = 0, $path = '/', $domain = ''): static {
+    public function setCookie(string $name, ?string $value = null, int $expires = 0, string $path = '/', string $domain = ''): static {
+
+        // if the value is null then unset the cookie
+        if ($value === null) {
+            unset($this->cookies[$name]);
+            return $this;
+        }
 
         $this->cookies[$name] = [
             'value'   => $value,

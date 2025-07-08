@@ -20,12 +20,12 @@ class DB {
      */
     private function __construct() {}
 
-    public static function __callStatic($name, $arguments) {
+    public static function __callStatic(string $name, array $arguments): mixed {
 
         // no instance defined so create it
         if (empty(static::$db)) {
 
-            $dsn = env('DB_DSN');
+            $dsn = (string) env('DB_DSN');
 
             if (empty($dsn)) {
                 throw new RuntimeException("Missing value for DB_DSN environment variable");

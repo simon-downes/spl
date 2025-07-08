@@ -33,7 +33,7 @@ class SPL {
      * @param string $directory
      * @return void
      */
-    public static function init(string $directory = '', $load_env = true): void {
+    public static function init(string $directory = '', bool $load_env = true): void {
 
         // we've already run init so nothing to do
         if (defined('SPL_ROOT')) {
@@ -52,14 +52,14 @@ class SPL {
             false => false,
 
             // not defined or defined as an empty string so enable for non-production environments
-            '' => !(bool) preg_match('/^prod/i', env('APP_ENV', 'dev')),
+            '' => !(bool) preg_match('/^prod/i',  (string) env('APP_ENV', 'dev')),
 
             // defined as an unknown string so set to false for safety
             default => false,
 
         });
 
-        $log_file = env('APP_LOG_FILE', '');
+        $log_file = (string) env('APP_LOG_FILE', '');
 
         // not an absolute path so make it relative to the root directory
         if ($log_file && substr($log_file, 0, 1) != '/') {
@@ -86,7 +86,7 @@ class SPL {
     /**
      * Dump a variable to StdOut.
      */
-    public static function dump(mixed $var) {
+    public static function dump(mixed $var): void {
 
         echo (new Debug())->toString($var), "\n";
 
@@ -95,14 +95,14 @@ class SPL {
     /**
      * Render a Twig template with the specified context.
      */
-    public static function render(string $template, array $context = []) {
+    public static function render(string $template, array $context = []): string {
 
         static $twig;
 
         if (empty($twig)) {
 
             $twig = new TwigEnvironment(
-                new TwigLoader(static::config('twig.templates', SPL_ROOT . '/templates')),
+                new TwigLoader((string) static::config('twig.templates', SPL_ROOT . '/templates')),
                 [
                     'cache'       => SPL::config('twig.cache', false),
                     'debug'       => SPL_DEBUG,

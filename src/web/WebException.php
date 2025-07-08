@@ -10,23 +10,23 @@ use Exception;
 
 class WebException extends Exception {
 
-    public static function badRequest(string $message) {
+    public static function badRequest(string $message): static {
         return new static($message, 400);
     }
 
-    public static function unauthorized(string $message) {
+    public static function unauthorized(string $message): static {
         return new static($message, 401);
     }
 
-    public static function forbidden(string $message) {
+    public static function forbidden(string $message): static {
         return new static($message, 403);
     }
 
-    public static function notFound(string $path) {
+    public static function notFound(string $path): static {
         return new static("Not Found: {$path}", 404);
     }
 
-    public static function methodNotAllowed(string $method, string $path) {
+    public static function methodNotAllowed(string $method, string $path): static {
         return new static("Method Not Allowed: {$method} for {$path}", 405);
     }
 

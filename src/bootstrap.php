@@ -18,7 +18,7 @@ define('SPL_REQUEST_ID', Random::hex(8));
 define('SPL_START_TIME', $_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true));
 
 if (!function_exists('d')) {
-    function d(...$vars) {
+    function d(mixed ...$vars): void {
         if (!defined('SPL_DEBUG') || !SPL_DEBUG) {
             return;
         }
@@ -29,7 +29,7 @@ if (!function_exists('d')) {
 }
 
 if (!function_exists('dd')) {
-    function dd(...$vars) {
+    function dd(mixed ...$vars): void {
         if (!defined('SPL_DEBUG') || !SPL_DEBUG) {
             return;
         }

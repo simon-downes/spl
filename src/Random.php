@@ -19,7 +19,7 @@ class Random {
             throw new InvalidArgumentException("Hex strings must be an even number in length");
         }
 
-        $hex = bin2hex(random_bytes((int) ceil($length / 2)));
+        $hex = bin2hex(random_bytes(max(1, (int) ceil($length / 2))));
 
         return $hex;
 

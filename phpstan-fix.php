@@ -8,7 +8,7 @@
  * 3. Regenerating the baseline after fixes
  * 
  * Usage: php phpstan-fix.php [max_issues]
- * Where max_issues is the number of issues to show (default: 5)
+ * Where max_issues is the number of issues to show (default: 50)
  */
 
 // Get the maximum number of issues to show
@@ -20,7 +20,7 @@ echo "=========================\n\n";
 // Create a temporary config file without the baseline
 $temp_config = <<<EOT
 parameters:
-    level: 5
+    level: 8
     paths:
         - src
     excludePaths:
@@ -43,6 +43,10 @@ parameters:
         - '#Constant SPL_DEBUG not found\.#'
         # Ignore "unsafe usage of new static()" errors
         - '#Unsafe usage of new static\(\)\.#'
+        # Ignore "no value type specified in iterable type array" errors
+        - '#has parameter \\\$[a-zA-Z0-9_]+ with no value type specified in iterable type array#'
+        - '#has no value type specified in iterable type array#'
+        - '#return type has no value type specified in iterable type array#'
         
 includes:
     - vendor/phpstan/phpstan-deprecation-rules/rules.neon

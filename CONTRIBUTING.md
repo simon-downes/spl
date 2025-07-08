@@ -51,8 +51,9 @@ This project uses PHPStan for static code analysis to identify potential bugs an
 
 The PHPStan configuration is defined in `phpstan.neon`, highlights are:
 
-- Analysis level 5 (medium strictness)
+- Analysis level 8 (high strictness)
 - `Unsafe usage of new static()` is ignored as a design choice
+- Array value type errors are ignored for practicality
 - Customised strict rules extention
    -  The following strict rules have been disabled in the PHPStan configuration:
       - **booleansInConditions** - Allowing non-boolean values in conditions
@@ -69,7 +70,7 @@ composer phpstan
 # Generate a new baseline file (after fixing issues)
 composer phpstan-baseline
 
-# Show a limited number of issues to fix (helper script)
+# Show a limited number of issues to fix (helper script, shows 50 issues by default)
 composer phpstan-fix
 ```
 

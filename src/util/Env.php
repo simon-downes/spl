@@ -91,6 +91,11 @@ class Env {
 
         $lines = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
+        // if the file could not be read then return -  shouldn't get here as we check for readability above
+        if ($lines === false) {
+            return;
+        }
+
         foreach ($lines as $line) {
 
             // comment so ignore it

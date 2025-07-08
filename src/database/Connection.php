@@ -335,7 +335,9 @@ class Connection {
 
         $this->stats->query_count++;
 
-        return $result;
+        // $result will be false if the query failed
+        // but we have ERRMODE set to PDO::ERRMODE_EXCEPTION so it should never be false here
+        return (int) $result;
 
     }
 
@@ -365,11 +367,17 @@ class Connection {
 
     public function insertId(string $name = ''): string {
 
-        return $this->pdo->lastInsertId($name);
+        $id = $this->pdo->lastInsertId($name);
+
+        if ($id === false) {
+            throw new RuntimeException("Failed to retrieve last insert ID");
+        }
+
+        return $id;
 
     }
 
-    public function quote($value, int $type = PDO::PARAM_STR): string {
+    public function quote(mixed $value, int $type = PDO::PARAM_STR): string {
 
         return $this->pdo->quote($value, $type);
 

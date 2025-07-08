@@ -22,7 +22,7 @@ class Http {
      */
     private function __construct() {}
 
-    public static function __callStatic($method, $arguments) {
+    public static function __callStatic(string $method, array $arguments): object {
 
         $method = strtoupper($method);
 
@@ -64,7 +64,7 @@ class Http {
         }
 
         // send the request
-        $response = curl_exec($ch);
+        $response = (string) curl_exec($ch);
 
         if ($error = curl_error($ch)) {
             throw new RuntimeException("Curl Error: {$error}");

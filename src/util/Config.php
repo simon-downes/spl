@@ -61,7 +61,7 @@ class Config implements ArrayAccess {
             return $this->cache[$key];
         }
 
-        $parts   = explode('.', $key);
+        $parts   = explode('.', (string) $key);
         $context = $this->data;
 
         foreach ($parts as $part) {

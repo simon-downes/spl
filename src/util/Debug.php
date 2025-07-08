@@ -10,19 +10,20 @@ use Throwable;
 use ErrorException;
 use ReflectionClass;
 use ReflectionObject;
+use RuntimeException;
 
 class Debug {
 
-    protected $depth;
+    protected int $depth;
 
-    protected $stack;
+    protected array $stack;
 
     public function __construct() {
         $this->depth  = 0;
         $this->stack  = [];
     }
 
-    public function toString($var): string {
+    public function toString(mixed $var): string {
 
         $getters = [
             'is_null'     => 'getNull',
@@ -51,6 +52,9 @@ class Debug {
             ob_start();
             var_dump($var);
             $result = ob_get_clean();
+            if ($result === false) {
+                throw new RuntimeException('Failed to capture output from var_dump()');
+            }
         }
 
         return $result;
@@ -164,6 +168,7 @@ class Debug {
 
     }
 
+    /** @phpstan-ignore-next-line  resources have no type hint */
     public function getResource($resource): string {
 
         $type = get_resource_type($resource);

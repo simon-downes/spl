@@ -10,7 +10,7 @@ use DateTimeInterface;
 
 class Str {
 
-    protected static $plural = [
+    protected static array $plural = [
         '/(quiz)$/i'               => "$1zes",
         '/^(ox)$/i'                => "$1en",
         '/([m|l])ouse$/i'          => "$1ice",
@@ -31,7 +31,7 @@ class Str {
         '/$/'                      => "s",
     ];
 
-    protected static $singular = [
+    protected static array $singular = [
         '/(quiz)zes$/i'             => "$1",
         '/(matr)ices$/i'            => "$1ix",
         '/(vert|ind)ices$/i'        => "$1ex",
@@ -61,7 +61,7 @@ class Str {
         '/s$/i'                     => "",
     ];
 
-    protected static $irregular = [
+    protected static array $irregular = [
         'move'   => 'moves',
         'foot'   => 'feet',
         'goose'  => 'geese',
@@ -72,7 +72,7 @@ class Str {
         'person' => 'people',
     ];
 
-    protected static $uncountable = [
+    protected static array $uncountable = [
         'sheep',
         'fish',
         'deer',
@@ -156,13 +156,13 @@ class Str {
      */
     public static function uncamelise(string $str): string {
         return mb_strtolower(
-            preg_replace(
+            (string) preg_replace(
                 '/^A-Z^a-z^0-9]+/',
                 '_',
-                preg_replace(
+                (string) preg_replace(
                     '/([a-z\d])([A-Z])/u',
                     '$1_$2',
-                    preg_replace('/([A-Z+])([A-Z][a-z])/u', '$1_$2', $str),
+                    (string) preg_replace('/([A-Z+])([A-Z][a-z])/u', '$1_$2', $str),
                 ),
             ),
         );
@@ -175,7 +175,7 @@ class Str {
      */
     public static function slugify(string $str): string {
         $chars = ['&' => '-and-', '€' => '-EUR-', '£' => '-GBP-', '$' => '-USD-'];
-        return trim(preg_replace('/([^a-z0-9]+)/u', '-', mb_strtolower(strtr(static::removeAccents($str), $chars))), '-');
+        return trim((string) preg_replace('/([^a-z0-9]+)/u', '-', mb_strtolower(strtr(static::removeAccents($str), $chars))), '-');
     }
 
     /**
@@ -268,8 +268,8 @@ class Str {
 
         // fix and decode entities (handles missing ; terminator)
         $str = str_replace(['&amp;','&lt;','&gt;'], ['&amp;amp;','&amp;lt;','&amp;gt;'], $str);
-        $str = preg_replace('/(&#*\w+)\s+;/u', '$1;', $str);
-        $str = preg_replace('/(&#x*[0-9A-F]+);*/iu', '$1;', $str);
+        $str = (string) preg_replace('/(&#*\w+)\s+;/u', '$1;', $str);
+        $str = (string) preg_replace('/(&#x*[0-9A-F]+);*/iu', '$1;', $str);
         $str = html_entity_decode($str, ENT_COMPAT, $charset);
 
         // strip any control characters that were sneakily encoded as entities
@@ -279,28 +279,28 @@ class Str {
         $str = static::normaliseLineEndings($str);
 
         // remove any attribute starting with "on" or xmlns
-        $str = preg_replace('#(?:on[a-z]+|xmlns)\s*=\s*[\'"\s]?[^\'>"]*[\'"\s]?\s?#iu', '', $str);
+        $str = (string) preg_replace('#(?:on[a-z]+|xmlns)\s*=\s*[\'"\s]?[^\'>"]*[\'"\s]?\s?#iu', '', $str);
 
         // remove javascript: and vbscript: protocols and -moz-binding CSS property
-        $str = preg_replace('#([a-z]*)\s*=\s*([`\'"]*)\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:#iu', '$1=$2nojavascript...', $str);
-        $str = preg_replace('#([a-z]*)\s*=([\'"]*)\s*v\s*b\s*s\s*c\s*r\s*i\s*p\s*t\s*:#iu', '$1=$2novbscript...', $str);
-        $str = preg_replace('#([a-z]*)\s*=([\'"]*)\s*-moz-binding\s*:#u', '$1=$2nomozbinding...', $str);
+        $str = (string) preg_replace('#([a-z]*)\s*=\s*([`\'"]*)\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:#iu', '$1=$2nojavascript...', $str);
+        $str = (string) preg_replace('#([a-z]*)\s*=([\'"]*)\s*v\s*b\s*s\s*c\s*r\s*i\s*p\s*t\s*:#iu', '$1=$2novbscript...', $str);
+        $str = (string) preg_replace('#([a-z]*)\s*=([\'"]*)\s*-moz-binding\s*:#u', '$1=$2nomozbinding...', $str);
 
         // only works in IE: <span style="width: expression(alert('XSS!'));"></span>
-        $str = preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?expression\s*\([^>]*+>#isu', '$1>', $str);
-        $str = preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?behaviour\s*\([^>]*+>#isu', '$1>', $str);
-        $str = preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?s\s*c\s*r\s*i\s*p\s*t\s*:*[^>]*+>#isu', '$1>', $str);
+        $str = (string) preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?expression\s*\([^>]*+>#isu', '$1>', $str);
+        $str = (string) preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?behaviour\s*\([^>]*+>#isu', '$1>', $str);
+        $str = (string) preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?s\s*c\s*r\s*i\s*p\s*t\s*:*[^>]*+>#isu', '$1>', $str);
 
         // remove namespaced elements (we do not need them)
-        $str = preg_replace('#</*\w+:\w[^>]*+>#iu', '', $str);
+        $str = (string) preg_replace('#</*\w+:\w[^>]*+>#iu', '', $str);
 
         // remove data URIs
-        $str = preg_replace("#data:[\w/]+;\w+,[\w\r\n+=/]*#iu", "data: not allowed", $str);
+        $str = (string) preg_replace("#data:[\w/]+;\w+,[\w\r\n+=/]*#iu", "data: not allowed", $str);
 
         // remove really unwanted tags
         do {
             $old = $str;
-            $str = preg_replace('#</*(?:applet|b(?:ase|gsound|link)|body|embed|frame(?:set)?|head|html|i(?:frame|layer)|l(?:ayer|ink)|meta|object|s(?:cript|tyle)|title|xml)[^>]*+>#iu', '', $str);
+            $str = (string) preg_replace('#</*(?:applet|b(?:ase|gsound|link)|body|embed|frame(?:set)?|head|html|i(?:frame|layer)|l(?:ayer|ink)|meta|object|s(?:cript|tyle)|title|xml)[^>]*+>#iu', '', $str);
         }
         while ($old !== $str);
 
@@ -315,7 +315,7 @@ class Str {
 
         do {
             // 00-08, 11, 12, 14-31, 127
-            $str = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/Su', '', $str, -1, $count);
+            $str = (string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/Su', '', $str, -1, $count);
         }
         while ($count);
 
@@ -330,7 +330,7 @@ class Str {
     public static function normaliseLineEndings(string $str): string {
         $str = str_replace("\r\n", "\n", $str);
         $str = str_replace("\r", "\n", $str);
-        return preg_replace("/\n{2,}/", "\n\n", $str);
+        return (string) preg_replace("/\n{2,}/", "\n\n", $str);
     }
 
     public static function pluralise(string $str): string {
@@ -344,14 +344,14 @@ class Str {
         foreach (self::$irregular as $pattern => $result) {
             $pattern = '/' . $pattern . '$/iu';
             if (preg_match($pattern, $str)) {
-                return preg_replace($pattern, $result, $str);
+                return (string) preg_replace($pattern, $result, $str);
             }
         }
 
         // check for matches using regular expressions
         foreach (self::$plural as $pattern => $result) {
             if (preg_match($pattern, $str)) {
-                return preg_replace($pattern, $result, $str);
+                return (string) preg_replace($pattern, $result, $str);
             }
         }
 
@@ -370,14 +370,14 @@ class Str {
         foreach (self::$irregular as $result => $pattern) {
             $pattern = '/' . $pattern . '$/iu';
             if (preg_match($pattern, $str)) {
-                return preg_replace($pattern, $result, $str);
+                return (string) preg_replace($pattern, $result, $str);
             }
         }
 
         // check for matches using regular expressions
         foreach (self::$singular as $pattern => $result) {
             if (preg_match($pattern, $str)) {
-                return preg_replace($pattern, $result, $str);
+                return (string) preg_replace($pattern, $result, $str);
             }
         }
 
@@ -396,21 +396,21 @@ class Str {
         $seconds = 0;
 
         if (preg_match('/^\d+:\d+$/', $str)) {
-            list(, $minutes, $seconds) = explode(':', $str);
+            list(, $minutes, $seconds) = array_map('intval', explode(':', $str));
         }
         elseif (preg_match('/^\d+:\d+:\d+$/', $str)) {
-            list($hours, $minutes, $seconds) = explode(':', $str);
+            list($hours, $minutes, $seconds) = array_map('intval', explode(':', $str));
         }
         else {
 
             // convert invalid characters to spaces
-            $str = preg_replace('/[^a-z0-9. ]+/iu', ' ', $str);
+            $str = (string) preg_replace('/[^a-z0-9. ]+/iu', ' ', $str);
 
             // strip multiple spaces
-            $str = preg_replace('/ {2,}/u', ' ', $str);
+            $str = (string) preg_replace('/ {2,}/u', ' ', $str);
 
             // compress scales and units together so '2 hours' => '2hours'
-            $str = preg_replace('/([0-9.]+) ([cdehimnorstu]+)/u', '$1$2', $str);
+            $str = (string) preg_replace('/([0-9.]+) ([cdehimnorstu]+)/u', '$1$2', $str);
 
             foreach (explode(' ', $str) as $item) {
 

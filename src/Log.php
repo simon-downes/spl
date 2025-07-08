@@ -32,7 +32,7 @@ class Log {
      */
     private function __construct() {}
 
-    public static function __callStatic($name, $arguments) {
+    public static function __callStatic(string $name, array $arguments): void {
 
         $level = strtoupper($name);
 
@@ -62,7 +62,7 @@ class Log {
             $output .= "{$prefix} {$line}\n";
         }
 
-        $file = $file ?: env('APP_LOG_FILE');
+        $file = $file ?: (string) env('APP_LOG_FILE');
 
         if (empty($file) || ($file == 'php')) {
             error_log(trim($output));
@@ -78,7 +78,7 @@ class Log {
         static $app_level = null;
 
         if (!$app_level) {
-            $app_level = static::LEVELS[strtoupper(env('APP_LOG_LEVEL', ''))] ?? static::LEVELS["INFO"];
+            $app_level = static::LEVELS[strtoupper((string) env('APP_LOG_LEVEL', ''))] ?? static::LEVELS["INFO"];
         }
 
         $this_level = static::LEVELS[$level] ?? static::LEVELS["INFO"];

@@ -1,43 +1,31 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Variable method call on spl\\database\\Connection\.$#'
-			identifier: method.dynamicName
+			message: '#^Parameter \#3 \$value of function curl_setopt expects non\-empty\-string\|null, string given\.$#'
+			identifier: argument.type
 			count: 1
-			path: src/DB.php
+			path: src/Http.php
 
 		-
-			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
-			identifier: function.strict
-			count: 2
-			path: src/Str.php
-
-		-
-			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
-			identifier: function.strict
+			message: '#^Class spl\\util\\Config implements generic interface ArrayAccess but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
 			count: 1
-			path: src/util/Debug.php
+			path: src/util/Config.php
 
 		-
-			message: '#^Variable method call on \$this\(spl\\util\\Debug\)\.$#'
-			identifier: method.dynamicName
+			message: '#^Method spl\\util\\Debug\:\:getClassProperties\(\) has parameter \$class with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
 			count: 1
 			path: src/util/Debug.php
 
 		-
-			message: '#^Call to function array_filter\(\) requires parameter \#2 to be passed to avoid loose comparison semantics\.$#'
-			identifier: arrayFilter.strict
+			message: '#^Parameter \#1 \.\.\.\$arg1 of function max expects non\-empty\-array, list\<int\<0, max\>\> given\.$#'
+			identifier: argument.type
 			count: 1
-			path: src/web/Request.php
+			path: src/util/Debug.php
 
 		-
-			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
-			identifier: function.strict
+			message: '#^Parameter \#2 \$offset of function substr expects int, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
 			count: 1
-			path: src/web/Response.php
-
-		-
-			message: '#^Variable property access on \$this\(spl\\web\\Response\)\.$#'
-			identifier: property.dynamicName
-			count: 1
-			path: src/web/Response.php
+			path: src/util/Debug.php

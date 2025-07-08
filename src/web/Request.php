@@ -98,7 +98,7 @@ class Request {
         return $this->path;
     }
 
-    public function lookup($k, mixed $default = null): mixed {
+    public function lookup(string $k, mixed $default = null): mixed {
         return $this->query[$k] ?? $this->body[$k] ?? $default;
     }
 
