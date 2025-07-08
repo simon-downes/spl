@@ -17,12 +17,12 @@ return $config
             'anonymous_classes_opening_brace' => 'same_line',
             'anonymous_functions_opening_brace' => 'same_line',
         ],
-        'no_blank_lines_after_class_opening' => false,
-        'blank_line_after_opening_tag' => false,
         'declare_equal_normalize' => [
             'space' => 'none'
         ],
+        'blank_line_after_opening_tag' => false,
         'linebreak_after_opening_tag' => false,
+        'no_blank_lines_after_class_opening' => false,
         'no_extra_blank_lines' => [
             'tokens' => ['extra'],
         ],

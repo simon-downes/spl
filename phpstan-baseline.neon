@@ -1,0 +1,43 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Variable method call on spl\\database\\Connection\.$#'
+			identifier: method.dynamicName
+			count: 1
+			path: src/DB.php
+
+		-
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
+			count: 2
+			path: src/Str.php
+
+		-
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
+			count: 1
+			path: src/util/Debug.php
+
+		-
+			message: '#^Variable method call on \$this\(spl\\util\\Debug\)\.$#'
+			identifier: method.dynamicName
+			count: 1
+			path: src/util/Debug.php
+
+		-
+			message: '#^Call to function array_filter\(\) requires parameter \#2 to be passed to avoid loose comparison semantics\.$#'
+			identifier: arrayFilter.strict
+			count: 1
+			path: src/web/Request.php
+
+		-
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
+			count: 1
+			path: src/web/Response.php
+
+		-
+			message: '#^Variable property access on \$this\(spl\\web\\Response\)\.$#'
+			identifier: property.dynamicName
+			count: 1
+			path: src/web/Response.php

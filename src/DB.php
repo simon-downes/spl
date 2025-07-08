@@ -39,6 +39,7 @@ class DB {
             throw new BadMethodCallException(sprintf("Unknown method %s::%s", static::$db::class, $name));
         }
 
+        /** @phpstan-ignore-next-line */
         return static::$db->$name(...$arguments);
 
     }

@@ -336,7 +336,7 @@ class Str {
     public static function pluralise(string $str): string {
 
         // save some time in the case that singular and plural are the same
-        if (in_array(mb_strtolower($str), self::$uncountable)) {
+        if (in_array(mb_strtolower($str), self::$uncountable, true)) {
             return $str;
         }
 
@@ -362,7 +362,7 @@ class Str {
     public static function singularise(string $str): string {
 
         // save some time in the case that singular and plural are the same
-        if (in_array(mb_strtolower($str), self::$uncountable)) {
+        if (in_array(mb_strtolower($str), self::$uncountable, true)) {
             return $str;
         }
 

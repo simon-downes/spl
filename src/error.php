@@ -13,14 +13,16 @@ $names = [
     E_USER_ERROR        => 'User Error',
     E_USER_WARNING      => 'User Warning',
     E_USER_NOTICE       => 'User Notice',
-    E_STRICT            => 'Strict Standards',
     E_RECOVERABLE_ERROR => 'Recoverable Error',
     E_DEPRECATED        => 'Deprecated',
     E_USER_DEPRECATED   => 'User Deprecated',
 ];
 
-// $error = new \Exception('Ooops');
-// SPL_DEBUG = false;
+// if we don't have an error then something has gone wrong
+// but we  don't want to throw an error here as that would be worse than a generic error
+if (empty($error)) {
+    $error = new \Exception('Unknown Error');
+}
 
 $err = [
     'name'    => get_class($error),

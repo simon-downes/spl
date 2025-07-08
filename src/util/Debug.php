@@ -39,6 +39,7 @@ class Debug {
 
         foreach ($getters as $test => $method) {
             if ($test($var)) {
+                /** @phpstan-ignore-next-line */
                 $result = $this->$method($var);
                 break;
             }
@@ -56,7 +57,7 @@ class Debug {
 
     }
 
-    public function getNull(): string {
+    public function getNull( mixed $var): string {
         return 'null';
     }
 
@@ -278,7 +279,7 @@ class Debug {
         if (end($this->stack) === $obj) {
             return '**SELF**';
         }
-        elseif (in_array($obj, $this->stack)) {
+        elseif (in_array($obj, $this->stack, true)) {
             return '**RECURSION**';
         }
 

@@ -136,6 +136,7 @@ class Response {
                 case 'body':
                 case 'headers':
                 case 'cookies':
+                    /** @phpstan-ignore-next-line */
                     return $this->$property;
 
                 case 'header':
@@ -153,7 +154,7 @@ class Response {
     }
 
     public function isRedirect() {
-        return in_array($this->status['code'], [301, 302, 303, 307, 308]);
+        return in_array($this->status['code'], [301, 302, 303, 307, 308], true);
     }
 
     public function isServerError() {

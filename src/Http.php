@@ -47,8 +47,8 @@ class Http {
 
         $ch = curl_init($url);
 
-        curl_setopt($ch, CURLOPT_HEADER, 1);            // return the response headers
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);    // return the response body
+        curl_setopt($ch, CURLOPT_HEADER, true);            // return the response headers
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);    // return the response body
 
         // set the correct request method
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));

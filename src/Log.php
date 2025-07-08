@@ -10,6 +10,12 @@ use BadMethodCallException;
 
 /**
  * Simple logger.
+ *
+ * @method static void debug(string $message, string $file = '')
+ * @method static void info(string $message, string $file = '')
+ * @method static void warning(string $message, string $file = '')
+ * @method static void error(string $message, string $file = '')
+ * @method static void critical(string $message, string $file = '')
  */
 class Log {
 

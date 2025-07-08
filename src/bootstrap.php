@@ -19,7 +19,7 @@ define('SPL_START_TIME', $_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true));
 
 if (!function_exists('d')) {
     function d(...$vars) {
-        if (!SPL_DEBUG) {
+        if (!defined('SPL_DEBUG') || !SPL_DEBUG) {
             return;
         }
         foreach ($vars as $var) {
@@ -30,7 +30,7 @@ if (!function_exists('d')) {
 
 if (!function_exists('dd')) {
     function dd(...$vars) {
-        if (!SPL_DEBUG) {
+        if (!defined('SPL_DEBUG') || !SPL_DEBUG) {
             return;
         }
         if (!SPL_CLI) {

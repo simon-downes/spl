@@ -34,7 +34,7 @@ class Request {
         $auth = array_filter([
             'username' => $_SERVER['PHP_AUTH_USER'] ?? false,
             'password' => $_SERVER['PHP_AUTH_PW'] ?? false,
-        ]);
+        ], function($value) { return $value !== false; });
 
         return new static(
             $_SERVER['REQUEST_METHOD'],

@@ -1,0 +1,53 @@
+# PHPStan configuration for Simon's PHP/Prototyping Library (SPL)
+#
+# Level guide:
+# - 0: basic checks, few false positives
+# - 5: medium strictness (current setting)
+# - 9: very strict analysis
+#
+# As you fix issues, you can gradually increase the level
+
+parameters:
+    # Analysis level (0-9)
+    level: 5
+
+    # Paths to analyze
+    paths:
+        - src
+
+    # Paths to exclude
+    excludePaths:
+        - vendor/*
+
+    # Be less strict about type certainty from PHPDoc
+    # This helps with some false positives in the codebase
+    treatPhpDocTypesAsCertain: false
+
+    # Don't report errors that are ignored but don't match anything
+    reportUnmatchedIgnoredErrors: false
+
+    # Configure strict rules - disable specific rules
+    strictRules:
+        allRules: true
+        booleansInConditions: false  # Disable requiring boolean values in conditions
+        disallowedEmpty: false       # Allow the use of empty()
+        disallowedLooseComparison: false  # Allow loose comparisons (== and !=)
+        disallowedShortTernary: false  # Allow short ternary operators (?:)
+
+    # Ignore specific errors
+    ignoreErrors:
+        # Ignore "constant not found" errors for SPL_ROOT and SPL_DEBUG
+        - '#Constant SPL_ROOT not found\.#'
+        - '#Constant SPL_DEBUG not found\.#'
+        # Ignore "unsafe usage of new static()" errors
+        - '#Unsafe usage of new static\(\)\.#'
+
+includes:
+    # Include baseline to ignore existing errors
+    - phpstan-baseline.neon
+
+    # Include deprecation rules extension
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+
+    # Enable strict rules
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
