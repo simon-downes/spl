@@ -11,8 +11,18 @@ use RuntimeException;
 
 use spl\database\Connection;
 
+/**
+ * Static database helper class.
+ * 
+ * Provides a convenient static interface to database operations.
+ */
 class DB {
 
+    /**
+     * The database connection instance.
+     *
+     * @var Connection
+     */
     protected static Connection $db;
 
     /**
@@ -20,6 +30,19 @@ class DB {
      */
     private function __construct() {}
 
+    /**
+     * Forward static method calls to the database connection.
+     *
+     * Creates a database connection if one doesn't exist yet.
+     *
+     * @param string $name      The method name to call
+     * @param array  $arguments The arguments to pass to the method
+     * 
+     * @return mixed The result of the method call
+     * 
+     * @throws RuntimeException     If DB_DSN environment variable is not set
+     * @throws BadMethodCallException If the method doesn't exist on the connection
+     */
     public static function __callStatic(string $name, array $arguments): mixed {
 
         // no instance defined so create it

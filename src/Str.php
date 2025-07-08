@@ -8,8 +8,18 @@ namespace spl;
 
 use DateTimeInterface;
 
+/**
+ * String manipulation utility class.
+ * 
+ * Provides a collection of useful string manipulation methods.
+ */
 class Str {
 
+    /**
+     * Regular expression patterns for pluralizing words.
+     *
+     * @var array<string, string>
+     */
     protected static array $plural = [
         '/(quiz)$/i'               => "$1zes",
         '/^(ox)$/i'                => "$1en",
@@ -31,6 +41,11 @@ class Str {
         '/$/'                      => "s",
     ];
 
+    /**
+     * Regular expression patterns for singularizing words.
+     *
+     * @var array<string, string>
+     */
     protected static array $singular = [
         '/(quiz)zes$/i'             => "$1",
         '/(matr)ices$/i'            => "$1ix",
@@ -61,6 +76,11 @@ class Str {
         '/s$/i'                     => "",
     ];
 
+    /**
+     * Irregular word forms that don't follow standard pluralization/singularization rules.
+     *
+     * @var array<string, string>
+     */
     protected static array $irregular = [
         'move'   => 'moves',
         'foot'   => 'feet',
@@ -72,6 +92,11 @@ class Str {
         'person' => 'people',
     ];
 
+    /**
+     * Words that are the same in both singular and plural forms.
+     *
+     * @var array<int, string>
+     */
     protected static array $uncountable = [
         'sheep',
         'fish',
@@ -91,12 +116,14 @@ class Str {
 
     /**
      * Parse a URL string into an array of components.
+     * 
      * Similar to the native parse_url except that the returned array will contain all components
-     * and the query component is replaced a decoded array.
+     * and the query component is replaced with a decoded array.
      *
-     * @param  string       $url        either a string array or a partial list of url components
-     * @param  array        $defaults   an array of default values for components
-     * @return array|null   Returns false if the URL could not be parsed
+     * @param string $url      The URL to parse
+     * @param array  $defaults Default values for components
+     * 
+     * @return array|null An array of URL components or null if the URL could not be parsed
      */
     public static function parseURL(string $url, array $defaults = []): array|null {
 
@@ -122,6 +149,14 @@ class Str {
 
     }
 
+    /**
+     * Build a URL string from an array of components.
+     *
+     * @param array $parts   The URL components
+     * @param bool  $show_pw Whether to include the password in the URL
+     * 
+     * @return string The built URL
+     */
     public static function buildURL(array $parts, bool $show_pw = false): string {
 
         $url = '';
@@ -333,6 +368,13 @@ class Str {
         return (string) preg_replace("/\n{2,}/", "\n\n", $str);
     }
 
+    /**
+     * Convert a singular word to its plural form.
+     *
+     * @param string $str The singular word to pluralize
+     * 
+     * @return string The plural form of the word
+     */
     public static function pluralise(string $str): string {
 
         // save some time in the case that singular and plural are the same
@@ -359,6 +401,13 @@ class Str {
 
     }
 
+    /**
+     * Convert a plural word to its singular form.
+     *
+     * @param string $str The plural word to singularize
+     * 
+     * @return string The singular form of the word
+     */
     public static function singularise(string $str): string {
 
         // save some time in the case that singular and plural are the same

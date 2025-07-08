@@ -12,17 +12,42 @@ use ReflectionClass;
 use ReflectionObject;
 use RuntimeException;
 
+/**
+ * Debug utility class.
+ * 
+ * Provides methods for debugging variables and objects.
+ */
 class Debug {
 
+    /**
+     * Maximum recursion depth.
+     *
+     * @var int
+     */
     protected int $depth;
 
+    /**
+     * Stack of objects being processed to detect recursion.
+     *
+     * @var array<int, object>
+     */
     protected array $stack;
 
+    /**
+     * Create a new Debug instance.
+     */
     public function __construct() {
         $this->depth  = 0;
         $this->stack  = [];
     }
 
+    /**
+     * Convert a variable to a string representation.
+     *
+     * @param mixed $var The variable to convert
+     * 
+     * @return string The string representation of the variable
+     */
     public function toString(mixed $var): string {
 
         $getters = [

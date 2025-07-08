@@ -16,9 +16,14 @@ use spl\Str;
 
 /**
  * A wrapper for PDO that provides some handy extra functions and streamlines everything else.
+ * 
+ * Provides simplified database access with support for multiple database types.
  */
 class Connection {
 
+    /**
+     * Database type constants.
+     */
     public const TYPE_MYSQL      = 'mysql';
     public const TYPE_POSTGRES   = 'pgsql';
     public const TYPE_SQLITE     = 'sqlite';
@@ -26,26 +31,38 @@ class Connection {
 
     /**
      * The PDO database connection.
+     *
+     * @var PDO
      */
     protected PDO $pdo;
 
     /**
      * Connection details.
+     *
+     * @var stdClass
      */
     protected stdClass $dsn;
 
     /**
      * Prepared statement cache.
+     *
+     * @var array<string, PDOStatement>
      */
     protected array $statements = [];
 
     /**
      * Some basic stats on timings and query count.
+     *
+     * @var stdClass
      */
     protected stdClass $stats;
 
     /**
      * Create a new database connection.
+     *
+     * @param string $url The database connection URL
+     * 
+     * @throws RuntimeException If the URL is invalid or the connection fails
      */
     public function __construct(string $url) {
 
@@ -63,6 +80,12 @@ class Connection {
 
     /**
      * Take a URL string and return an object containing the individual parts.
+     *
+     * @param string $url The database connection URL
+     * 
+     * @return stdClass The parsed DSN object
+     * 
+     * @throws RuntimeException If the URL is invalid or the database type is unknown
      */
     protected function makeDSN(string $url): stdClass {
 
@@ -131,8 +154,11 @@ class Connection {
 
     /**
      * Re-establish the database connection.
+     * 
      * Mostly used after calling pcntl_fork() or similar.
      * This method will have no effect if references to the underlying PDO instance exist outside of this PDOConnection instance.
+     *
+     * @return void
      */
     public function reconnect(): void {
 
@@ -171,10 +197,22 @@ class Connection {
 
     }
 
+    /**
+     * Get the DSN object.
+     *
+     * @return stdClass A clone of the DSN object
+     */
     public function getDSN(): stdClass {
         return clone $this->dsn;
     }
 
+    /**
+     * Prepare a SQL statement.
+     *
+     * @param string|PDOStatement $statement The SQL statement to prepare
+     * 
+     * @return PDOStatement The prepared statement
+     */
     public function prepare(string|PDOStatement $statement): PDOStatement {
 
         // it's PDOStatement so has already been prepared
@@ -194,6 +232,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return PDOStatement The executed statement
+     */
     public function query(string|PDOStatement $statement, array $params = []): PDOStatement {
 
         $statement = $this->prepare($statement);
@@ -210,12 +256,28 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL statement and return the number of affected rows.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return int The number of affected rows
+     */
     public function execute(string|PDOStatement $statement, array $params = []): int {
 
         return $this->query($statement, $params)->rowCount();
 
     }
 
+    /**
+     * Execute a SQL query and return all rows.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return array The result rows
+     */
     public function getAll(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
@@ -226,6 +288,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query with multiple result sets and return all rows.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return array An array of result sets
+     */
     public function getAllMulti(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
@@ -251,6 +321,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query and return an associative array.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return array The result as an associative array
+     */
     public function getAssoc(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
@@ -266,6 +344,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query and return a multi-dimensional associative array.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return array The result as a multi-dimensional associative array
+     */
     public function getAssocMulti(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
@@ -286,6 +372,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query and return a single row.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return array The first row of the result
+     */
     public function getRow(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
@@ -296,6 +390,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query and return a single column.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return array The first column of the result
+     */
     public function getCol(string|PDOStatement $statement, array $params = []): array {
 
         $statement = $this->query($statement, $params);
@@ -310,6 +412,14 @@ class Connection {
 
     }
 
+    /**
+     * Execute a SQL query and return a single value.
+     *
+     * @param string|PDOStatement $statement The SQL statement to execute
+     * @param array               $params    The parameters to bind to the query
+     * 
+     * @return mixed The first value of the first row of the result
+     */
     public function getOne(string|PDOStatement $statement, array $params = []): mixed {
 
         $statement = $this->query($statement, $params);
@@ -322,10 +432,15 @@ class Connection {
 
     /**
      * Execute a raw SQL string and return the number of affected rows.
+     * 
      * Primarily used for DDL queries. Do not use this with:
      * - Anything (data/parameters/etc) that comes from userland
      * - Select queries - the answer will always be 0 as no rows are affected.
      * - Everyday queries - use query() or execute()
+     *
+     * @param string $sql The SQL to execute
+     * 
+     * @return int The number of affected rows
      */
     public function rawExec(string $sql): int {
 
@@ -341,30 +456,59 @@ class Connection {
 
     }
 
+    /**
+     * Begin a transaction.
+     *
+     * @return bool True on success
+     */
     public function begin(): bool {
 
         return $this->pdo->beginTransaction();
 
     }
 
+    /**
+     * Commit a transaction.
+     *
+     * @return bool True on success
+     */
     public function commit(): bool {
 
         return $this->pdo->commit();
 
     }
 
+    /**
+     * Rollback a transaction.
+     *
+     * @return bool True on success
+     */
     public function rollback(): bool {
 
         return $this->pdo->rollBack();
 
     }
 
+    /**
+     * Check if a transaction is active.
+     *
+     * @return bool True if a transaction is active
+     */
     public function inTransaction(): bool {
 
         return $this->pdo->inTransaction();
 
     }
 
+    /**
+     * Get the last insert ID.
+     *
+     * @param string $name The name of the sequence object (if any)
+     * 
+     * @return string The last insert ID
+     * 
+     * @throws RuntimeException If the last insert ID could not be retrieved
+     */
     public function insertId(string $name = ''): string {
 
         $id = $this->pdo->lastInsertId($name);
@@ -377,12 +521,27 @@ class Connection {
 
     }
 
+    /**
+     * Quote a value for use in a SQL statement.
+     *
+     * @param mixed $value The value to quote
+     * @param int   $type  The parameter type (PDO::PARAM_*)
+     * 
+     * @return string The quoted value
+     */
     public function quote(mixed $value, int $type = PDO::PARAM_STR): string {
 
         return $this->pdo->quote($value, $type);
 
     }
 
+    /**
+     * Quote an identifier (table or column name) for use in a SQL statement.
+     *
+     * @param string $name The identifier to quote
+     * 
+     * @return string The quoted identifier
+     */
     public function quoteIdentifier(string $name): string {
 
         $name = trim($name);
@@ -403,12 +562,22 @@ class Connection {
 
     }
 
+    /**
+     * Get the last error information.
+     *
+     * @return array The error information
+     */
     public function getLastError(): array {
 
         return $this->pdo->errorInfo();
 
     }
 
+    /**
+     * Get information about the database connection.
+     *
+     * @return array Connection information
+     */
     public function getInfo(): array {
 
         $server = $this->pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
@@ -429,6 +598,11 @@ class Connection {
 
     /**
      * Bind named and positional parameters to a PDOStatement.
+     *
+     * @param PDOStatement $statement The statement to bind parameters to
+     * @param array        $params    The parameters to bind
+     * 
+     * @return void
      */
     protected function bindParams(PDOStatement $statement, array $params): void {
 

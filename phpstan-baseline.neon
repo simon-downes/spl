@@ -7,8 +7,8 @@ parameters:
 			path: src/Http.php
 
 		-
-			message: '#^Class spl\\util\\Config implements generic interface ArrayAccess but does not specify its types\: TKey, TValue$#'
-			identifier: missingType.generics
+			message: '#^Property spl\\util\\Config\:\:\$cache \(array\<string, mixed\>\) does not accept array\<int\|string, mixed\>\.$#'
+			identifier: assign.propertyType
 			count: 1
 			path: src/util/Config.php
 
@@ -29,3 +29,15 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: src/util/Debug.php
+
+		-
+			message: '#^Parameter \#1 \$callback of function call_user_func expects callable\(\)\: mixed, \(callable\(\)\: mixed\)\|object given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/web/App.php
+
+		-
+			message: '#^Property spl\\web\\Response\:\:\$headers \(array\<string, string\>\) does not accept array\<string, int\|string\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/web/Response.php

@@ -10,6 +10,8 @@ use RuntimeException;
 
 /**
  * Simple environment helper that can load env files and return environment variables.
+ * 
+ * Provides methods for loading .env files and accessing environment variables with type conversion.
  */
 class Env {
 
@@ -18,10 +20,26 @@ class Env {
      */
     private function __construct() {}
 
+    /**
+     * Get all environment variables.
+     *
+     * @return array<string, string> All environment variables
+     */
     public static function all(): array {
         return $_ENV + getenv();
     }
 
+    /**
+     * Get an environment variable with type conversion.
+     * 
+     * Converts 'true', 'false', and 'null' strings to their respective types.
+     * Removes surrounding quotes from quoted strings.
+     *
+     * @param string $var     The name of the environment variable
+     * @param mixed  $default The default value if the variable doesn't exist
+     * 
+     * @return mixed The value of the environment variable or the default
+     */
     public static function get(string $var, mixed $default = null): mixed {
 
         $v = static::getRaw($var);
@@ -51,11 +69,16 @@ class Env {
     }
 
     /**
-     * Read a value from the current environment.
+     * Read a raw value from the current environment.
+     * 
      * This function will first look in $_ENV as that where .env file variables are loaded here
      * - in addition to being populated if "e" is in the variables_order ini setting
      * If no match is found then getenv() is used.
      * If the variable cannot be found then the function returns false.
+     *
+     * @param string $var The name of the environment variable
+     * 
+     * @return mixed The value of the environment variable or false if not found
      */
     protected static function getRaw(string $var): mixed {
 
@@ -65,6 +88,12 @@ class Env {
 
     /**
      * Load environment variables from the specified file with an error if it doesn't exist.
+     *
+     * @param string $file The path to the .env file
+     * 
+     * @return void
+     * 
+     * @throws RuntimeException If the file cannot be read
      */
     public static function load(string $file): void {
 
@@ -78,6 +107,10 @@ class Env {
 
     /**
      * Load environment variables from the specified file if it exists.
+     *
+     * @param string $file The path to the .env file
+     * 
+     * @return void
      */
     public static function safeLoad(string $file): void {
 
@@ -116,8 +149,15 @@ class Env {
     }
 
     /**
-     * Given a value string from an env file, parse it to resolve any embedded variables and remove surrounding quotes.
-     * TODO: remove end of line comments?
+     * Parse a value string from an env file.
+     * 
+     * Resolves any embedded variables and removes surrounding quotes.
+     *
+     * @param string $value The value to parse
+     * 
+     * @return string The parsed value
+     * 
+     * @throws RuntimeException If an embedded variable is undefined
      */
     protected static function parseValue(string $value): string {
 

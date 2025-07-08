@@ -19,6 +19,11 @@ use spl\web\App as WebApp;
 use Twig\Loader\FilesystemLoader as TwigLoader;
 use Twig\Environment as TwigEnvironment;
 
+/**
+ * Main SPL framework class.
+ * 
+ * Provides core functionality for the SPL framework.
+ */
 class SPL {
 
     /**
@@ -27,10 +32,13 @@ class SPL {
     private function __construct() {}
 
     /**
-     * Initialise the framework:
-     * -
+     * Initialize the framework.
      *
-     * @param string $directory
+     * Sets up the SPL_ROOT and SPL_DEBUG constants and loads environment variables.
+     *
+     * @param string $directory The root directory of the application
+     * @param bool   $load_env  Whether to load environment variables from .env file
+     * 
      * @return void
      */
     public static function init(string $directory = '', bool $load_env = true): void {
@@ -70,6 +78,11 @@ class SPL {
 
     /**
      * Return the value of a configuration setting.
+     *
+     * @param string $key     The configuration key
+     * @param mixed  $default The default value if the key doesn't exist
+     * 
+     * @return mixed The configuration value
      */
     public static function config(string $key, mixed $default = null): mixed {
 
@@ -85,6 +98,10 @@ class SPL {
 
     /**
      * Dump a variable to StdOut.
+     *
+     * @param mixed $var The variable to dump
+     * 
+     * @return void
      */
     public static function dump(mixed $var): void {
 
@@ -94,6 +111,11 @@ class SPL {
 
     /**
      * Render a Twig template with the specified context.
+     *
+     * @param string $template The template name
+     * @param array  $context  The template context variables
+     * 
+     * @return string The rendered template
      */
     public static function render(string $template, array $context = []): string {
 
@@ -115,6 +137,13 @@ class SPL {
 
     }
 
+    /**
+     * Run the application.
+     *
+     * @param string $directory The root directory of the application
+     * 
+     * @return void
+     */
     public static function run(string $directory): void {
 
         try {
@@ -139,6 +168,16 @@ class SPL {
 
     }
 
+    /**
+     * Handle an error.
+     *
+     * Logs the error and displays an error page for web requests.
+     *
+     * @param Throwable $error The error to handle
+     * @param int       $exit  The exit code (0 to not exit)
+     * 
+     * @return void
+     */
     public static function error(Throwable $error, int $exit = 1): void {
 
         $trace = (new Debug())->toString($error);
@@ -158,6 +197,15 @@ class SPL {
 
     }
 
+    /**
+     * Convert various time formats to a Unix timestamp.
+     *
+     * @param int|string|DateTimeInterface $time The time to convert
+     * 
+     * @return int The Unix timestamp
+     * 
+     * @throws LogicException If the time cannot be converted to a timestamp
+     */
     public static function makeTimestamp(int|string|DateTimeInterface $time): int {
 
         if (is_numeric($time)) {

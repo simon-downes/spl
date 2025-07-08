@@ -9,8 +9,16 @@ namespace spl;
 use BadMethodCallException;
 use RuntimeException;
 
+/**
+ * HTTP client utility class.
+ * 
+ * Provides a simple interface for making HTTP requests.
+ */
 class Http {
 
+    /**
+     * HTTP method constants.
+     */
     public const GET     = 'GET';
     public const POST    = 'POST';
     public const PUT     = 'PUT';
@@ -22,6 +30,18 @@ class Http {
      */
     private function __construct() {}
 
+    /**
+     * Forward static method calls to the request() method.
+     * 
+     * Allows for convenient syntax like Http::get(), Http::post(), etc.
+     *
+     * @param string $method    The HTTP method to use (get, post, etc.)
+     * @param array  $arguments The arguments to pass to the request method
+     * 
+     * @return object The HTTP response object
+     * 
+     * @throws BadMethodCallException If the method is not a valid HTTP method
+     */
     public static function __callStatic(string $method, array $arguments): object {
 
         $method = strtoupper($method);
@@ -42,6 +62,20 @@ class Http {
 
     /**
      * Make an HTTP request and return a simple object representing the response.
+     *
+     * @param string       $method  The HTTP method to use (GET, POST, etc.)
+     * @param string       $url     The URL to request
+     * @param array        $headers Optional request headers
+     * @param string|array $body    Optional request body
+     * 
+     * @return object The HTTP response object with properties:
+     *                - http_version: string
+     *                - status_code: int
+     *                - status_message: string
+     *                - headers: array
+     *                - body: string|array (JSON responses are automatically decoded)
+     * 
+     * @throws RuntimeException If the cURL request fails
      */
     public static function request(string $method, string $url, array $headers = [], string|array $body = ''): object {
 
@@ -98,8 +132,13 @@ class Http {
 
     /**
      * Parse a string or list of HTTP headers into an array.
+     * 
      * Header names are normalised to lowercase, duplicate values are concatenated with a comma,
-     * the `set-cookie` header is returned as an array (if present)
+     * the `set-cookie` header is returned as an array (if present).
+     *
+     * @param array|string $headers The headers to parse
+     * 
+     * @return array The parsed headers
      */
     public static function parse_headers(array|string $headers): array {
 
@@ -140,10 +179,16 @@ class Http {
     }
 
     /**
-     * Parse the first line of an HTTP response and return an array containing:
-     * - http_version
-     * - status_code
-     * - status_message
+     * Parse the first line of an HTTP response.
+     *
+     * @param string $status_line The status line to parse
+     * 
+     * @return array An array containing:
+     *               - http_version: string
+     *               - status_code: int
+     *               - status_message: string
+     * 
+     * @throws RuntimeException If the status line is invalid
      */
     public static function parse_status_line(string $status_line): array {
 

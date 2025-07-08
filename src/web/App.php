@@ -11,12 +11,26 @@ use Throwable;
 use spl\SPL;
 use spl\util\Config;
 
+/**
+ * Web application class.
+ * 
+ * Handles routing and request processing for web applications.
+ */
 class App {
 
+    /**
+     * The registered routes.
+     *
+     * @var array<string, array<string, callable|string>>
+     */
     protected static array $routes = [];
 
     /**
      * Process the specified web request.
+     *
+     * @param Request $request The request to process
+     * 
+     * @return void
      */
     public static function handle(Request $request): void {
 
@@ -73,6 +87,10 @@ class App {
 
     /**
      * Loads routes from the specified file.
+     *
+     * @param string $file The path to the routes file
+     * 
+     * @return void
      */
     protected static function loadRoutes(string $file): void {
 
@@ -97,7 +115,13 @@ class App {
 
     /**
      * Try and match the requested path against available routes.
-     * @return array a tuple containing the handler for the request and the parameters to use
+     *
+     * @param string $path   The request path
+     * @param string $method The request method
+     * 
+     * @return array{0: callable|string, 1: array} A tuple containing the handler for the request and the parameters to use
+     * 
+     * @throws WebException If no route matches or the method is not allowed
      */
     protected static function match(string $path, string $method): array {
 
