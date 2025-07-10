@@ -87,7 +87,7 @@ class Http {
 
         // if there's a body then add that
         if (!empty($body)) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $headers);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
         }
 
         // send the request
