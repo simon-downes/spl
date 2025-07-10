@@ -10,27 +10,23 @@ use RuntimeException;
 
 /**
  * Timer utility class.
- * 
+ *
  * Provides methods for timing operations and measuring elapsed time.
  */
 class Timer {
 
     /**
-     * Time last started.
-     *
-     * @var float
+     * Timestamp when the timer was last started.
      */
     protected static float $started = 0;
 
     /**
-     * Total elapsed time.
-     *
-     * @var float
+     * Total elapsed time in seconds.
      */
     protected static float $elapsed = 0;
 
     /**
-     * Labelled points in time.
+     * Labelled points in time for performance tracking.
      *
      * @var array<int, array{0: string, 1: float}>
      */
@@ -42,9 +38,9 @@ class Timer {
     private function __construct() {}
 
     /**
-     * Get the time elapsed since the request started.
+     * Returns the time elapsed since the request started.
      *
-     * @return float The time elapsed in seconds, or -1 if the request start time is not available
+     * Uses REQUEST_TIME_FLOAT or SPL_START_TIME if available.
      */
     public static function requestTime(): float {
 
@@ -55,11 +51,9 @@ class Timer {
     }
 
     /**
-     * Start the timer.
+     * Starts the timer.
      *
-     * @param string $label The label for this start point
-     * 
-     * @return void
+     * Resets elapsed time to zero and begins timing.
      */
     public static function start(string $label = 'start'): void {
 
@@ -71,11 +65,7 @@ class Timer {
     }
 
     /**
-     * Stop the timer.
-     *
-     * @param string $label The label for this stop point
-     * 
-     * @return void
+     * Stops the timer and adds elapsed time to the total.
      */
     public static function stop(string $label = 'stop'): void {
 
@@ -89,9 +79,7 @@ class Timer {
     }
 
     /**
-     * Reset the timer.
-     *
-     * @return void
+     * Resets the timer and clears all marks.
      */
     public static function reset(): void {
         static::$started = 0;
@@ -100,38 +88,28 @@ class Timer {
     }
 
     /**
-     * Mark a point in time.
-     *
-     * @param string $label The label for this mark
-     * 
-     * @return void
+     * Records a named point in time for performance tracking.
      */
     public static function mark(string $label): void {
         static::$marks[] = [$label, microtime(true)];
     }
 
     /**
-     * Check if the timer is running.
-     *
-     * @return bool True if the timer is running
+     * Checks if the timer is currently running.
      */
     public static function isRunning(): bool {
         return (bool) static::$started;
     }
 
     /**
-     * Get the elapsed time since the timer was started.
-     *
-     * @return float The elapsed time in seconds
+     * Returns the time elapsed since the timer was started.
      */
     public static function getElapsed(): float {
         return static::$started ? (microtime(true) - static::$started) : 0;
     }
 
     /**
-     * Get the total elapsed time.
-     *
-     * @return float The total elapsed time in seconds
+     * Returns the total accumulated time.
      */
     public static function getTotalElapsed(): float {
 
@@ -147,13 +125,13 @@ class Timer {
     }
 
     /**
-     * Get all the marked points in time.
+     * Returns all recorded time marks with timing information.
      *
      * @return array<int, object> An array of mark objects with properties:
-     *                           - label: string
-     *                           - step: float (time since previous mark)
-     *                           - elapsed: float (time since first mark)
-     *                           - since_epoch: float (time since request start)
+     *                           - label: string - The mark name
+     *                           - step: float - Time since previous mark in seconds
+     *                           - elapsed: float - Time since first mark in seconds
+     *                           - since_epoch: float - Time since request start in seconds
      */
     public static function getMarks(): array {
 

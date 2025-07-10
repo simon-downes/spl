@@ -20,9 +20,10 @@ use Twig\Loader\FilesystemLoader as TwigLoader;
 use Twig\Environment as TwigEnvironment;
 
 /**
- * Main SPL framework class.
- * 
- * Provides core functionality for the SPL framework.
+ * Core framework functionality and utilities.
+ *
+ * Provides initialization, configuration, error handling, and template rendering.
+ * Acts as the central entry point for the SPL framework.
  */
 class SPL {
 
@@ -32,14 +33,10 @@ class SPL {
     private function __construct() {}
 
     /**
-     * Initialize the framework.
+     * Initializes the framework environment.
      *
-     * Sets up the SPL_ROOT and SPL_DEBUG constants and loads environment variables.
-     *
-     * @param string $directory The root directory of the application
-     * @param bool   $load_env  Whether to load environment variables from .env file
-     * 
-     * @return void
+     * Sets SPL_ROOT and SPL_DEBUG constants and loads environment variables.
+     * SPL_DEBUG is determined from APP_DEBUG or APP_ENV environment variables.
      */
     public static function init(string $directory = '', bool $load_env = true): void {
 
@@ -60,7 +57,7 @@ class SPL {
             false => false,
 
             // not defined or defined as an empty string so enable for non-production environments
-            '' => !(bool) preg_match('/^prod/i',  (string) env('APP_ENV', 'dev')),
+            '' => !(bool) preg_match('/^prod/i', (string) env('APP_ENV', 'dev')),
 
             // defined as an unknown string so set to false for safety
             default => false,
@@ -77,12 +74,9 @@ class SPL {
     }
 
     /**
-     * Return the value of a configuration setting.
+     * Retrieves configuration values from config/config.php.
      *
-     * @param string $key     The configuration key
-     * @param mixed  $default The default value if the key doesn't exist
-     * 
-     * @return mixed The configuration value
+     * Lazily loads the configuration file on first use.
      */
     public static function config(string $key, mixed $default = null): mixed {
 
@@ -97,11 +91,7 @@ class SPL {
     }
 
     /**
-     * Dump a variable to StdOut.
-     *
-     * @param mixed $var The variable to dump
-     * 
-     * @return void
+     * Dumps a variable to stdout in a readable format.
      */
     public static function dump(mixed $var): void {
 
@@ -110,12 +100,10 @@ class SPL {
     }
 
     /**
-     * Render a Twig template with the specified context.
+     * Renders a Twig template with the provided context.
      *
-     * @param string $template The template name
-     * @param array  $context  The template context variables
-     * 
-     * @return string The rendered template
+     * Lazily initializes Twig environment on first use.
+     * Template directory is configured via twig.templates config (defaults to /templates).
      */
     public static function render(string $template, array $context = []): string {
 
@@ -138,11 +126,9 @@ class SPL {
     }
 
     /**
-     * Run the application.
+     * Runs the application, handling web or CLI requests appropriately.
      *
-     * @param string $directory The root directory of the application
-     * 
-     * @return void
+     * Initializes the framework and catches any uncaught exceptions.
      */
     public static function run(string $directory): void {
 
@@ -169,14 +155,12 @@ class SPL {
     }
 
     /**
-     * Handle an error.
+     * Handles errors by logging them and displaying appropriate output.
      *
-     * Logs the error and displays an error page for web requests.
+     * For CLI requests, only logs the error.
+     * For web requests, displays an error page and logs the error.
      *
-     * @param Throwable $error The error to handle
-     * @param int       $exit  The exit code (0 to not exit)
-     * 
-     * @return void
+     * Will exit the application with the provided exit code unless exit is 0.
      */
     public static function error(Throwable $error, int $exit = 1): void {
 
@@ -198,13 +182,12 @@ class SPL {
     }
 
     /**
-     * Convert various time formats to a Unix timestamp.
+     * Converts various time formats to a Unix timestamp.
      *
-     * @param int|string|DateTimeInterface $time The time to convert
-     * 
-     * @return int The Unix timestamp
-     * 
-     * @throws LogicException If the time cannot be converted to a timestamp
+     * Handles integers, DateTimeInterface objects, and string dates.
+     * Empty string returns the current timestamp.
+     *
+     * @throws LogicException If the time string cannot be parsed
      */
     public static function makeTimestamp(int|string|DateTimeInterface $time): int {
 

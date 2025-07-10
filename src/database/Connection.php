@@ -15,9 +15,13 @@ use RuntimeException;
 use spl\Str;
 
 /**
- * A wrapper for PDO that provides some handy extra functions and streamlines everything else.
- * 
- * Provides simplified database access with support for multiple database types.
+ * Enhanced PDO wrapper with simplified query methods.
+ *
+ * Provides convenient methods for common database operations:
+ * - Simplified query execution with parameter binding
+ * - Fetching single rows, columns, or values
+ * - Transaction management
+ * - Support for MySQL, PostgreSQL, SQLite, and SQL Server
  */
 class Connection {
 
@@ -58,10 +62,10 @@ class Connection {
     protected stdClass $stats;
 
     /**
-     * Create a new database connection.
+     * Creates a new database connection from a URL.
      *
-     * @param string $url The database connection URL
-     * 
+     * URL format: driver://username:password@host:port/database?option=value
+     *
      * @throws RuntimeException If the URL is invalid or the connection fails
      */
     public function __construct(string $url) {
@@ -82,9 +86,9 @@ class Connection {
      * Take a URL string and return an object containing the individual parts.
      *
      * @param string $url The database connection URL
-     * 
+     *
      * @return stdClass The parsed DSN object
-     * 
+     *
      * @throws RuntimeException If the URL is invalid or the database type is unknown
      */
     protected function makeDSN(string $url): stdClass {
@@ -153,12 +157,13 @@ class Connection {
     }
 
     /**
-     * Re-establish the database connection.
-     * 
-     * Mostly used after calling pcntl_fork() or similar.
-     * This method will have no effect if references to the underlying PDO instance exist outside of this PDOConnection instance.
+     * Re-establishes the database connection.
      *
-     * @return void
+     * Useful after calling pcntl_fork() or similar operations.
+     * Clears the statement cache and creates a new PDO instance.
+     *
+     * Note: This will have no effect if references to the underlying PDO
+     * instance exist outside of this Connection instance.
      */
     public function reconnect(): void {
 
@@ -198,20 +203,19 @@ class Connection {
     }
 
     /**
-     * Get the DSN object.
+     * Returns a copy of the connection details.
      *
-     * @return stdClass A clone of the DSN object
+     * @return stdClass Connection details (type, host, port, etc.)
      */
     public function getDSN(): stdClass {
         return clone $this->dsn;
     }
 
     /**
-     * Prepare a SQL statement.
+     * Prepares a SQL statement with caching.
      *
-     * @param string|PDOStatement $statement The SQL statement to prepare
-     * 
-     * @return PDOStatement The prepared statement
+     * Caches prepared statements by their SHA1 hash for reuse.
+     * Accepts either a string SQL statement or an existing PDOStatement.
      */
     public function prepare(string|PDOStatement $statement): PDOStatement {
 
@@ -233,12 +237,11 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query.
+     * Executes a SQL query with parameter binding.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return PDOStatement The executed statement
+     * Automatically prepares statements and tracks execution statistics.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
      */
     public function query(string|PDOStatement $statement, array $params = []): PDOStatement {
 
@@ -257,26 +260,21 @@ class Connection {
     }
 
     /**
-     * Execute a SQL statement and return the number of affected rows.
+     * Executes a SQL statement and returns the number of affected rows.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return int The number of affected rows
+     * Useful for INSERT, UPDATE, or DELETE operations.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
      */
     public function execute(string|PDOStatement $statement, array $params = []): int {
-
         return $this->query($statement, $params)->rowCount();
-
     }
 
     /**
-     * Execute a SQL query and return all rows.
+     * Executes a SQL query and returns all result rows.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return array The result rows
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return array<int, array<string, mixed>> Result rows as associative arrays
      */
     public function getAll(string|PDOStatement $statement, array $params = []): array {
 
@@ -289,12 +287,12 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query with multiple result sets and return all rows.
+     * Executes a SQL query and returns multiple result sets.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return array An array of result sets
+     * Useful for stored procedures that return multiple result sets.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return array<int, array<int, array<string, mixed>>> Array of result sets
      */
     public function getAllMulti(string|PDOStatement $statement, array $params = []): array {
 
@@ -322,12 +320,13 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query and return an associative array.
+     * Executes a SQL query and returns an associative array using the first column as keys.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return array The result as an associative array
+     * If the result has only two columns, values will be the second column.
+     * Otherwise, values will be arrays of the remaining columns.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return array<string|int, mixed> Associative array of results
      */
     public function getAssoc(string|PDOStatement $statement, array $params = []): array {
 
@@ -345,12 +344,14 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query and return a multi-dimensional associative array.
+     * Executes a SQL query and returns a nested associative array.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return array The result as a multi-dimensional associative array
+     * Uses the first two columns as nested keys.
+     * If the result has only three columns, values will be the third column.
+     * Otherwise, values will be arrays of the remaining columns.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return array<string|int, array<string|int, mixed>> Nested associative array
      */
     public function getAssocMulti(string|PDOStatement $statement, array $params = []): array {
 
@@ -373,12 +374,12 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query and return a single row.
+     * Executes a SQL query and returns the first row.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return array The first row of the result
+     * Returns an empty array if no rows are found.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return array<string, mixed> First row as associative array
      */
     public function getRow(string|PDOStatement $statement, array $params = []): array {
 
@@ -391,12 +392,10 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query and return a single column.
+     * Executes a SQL query and returns the first column of all rows.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return array The first column of the result
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return array<int, mixed> Values from the first column
      */
     public function getCol(string|PDOStatement $statement, array $params = []): array {
 
@@ -413,12 +412,13 @@ class Connection {
     }
 
     /**
-     * Execute a SQL query and return a single value.
+     * Executes a SQL query and returns a single scalar value.
      *
-     * @param string|PDOStatement $statement The SQL statement to execute
-     * @param array               $params    The parameters to bind to the query
-     * 
-     * @return mixed The first value of the first row of the result
+     * Returns the first column of the first row.
+     * Returns null if no rows are found.
+     *
+     * @param array<string|int, mixed> $params Named or positional parameters
+     * @return mixed Single scalar value or null
      */
     public function getOne(string|PDOStatement $statement, array $params = []): mixed {
 
@@ -432,15 +432,11 @@ class Connection {
 
     /**
      * Execute a raw SQL string and return the number of affected rows.
-     * 
+     *
      * Primarily used for DDL queries. Do not use this with:
      * - Anything (data/parameters/etc) that comes from userland
      * - Select queries - the answer will always be 0 as no rows are affected.
      * - Everyday queries - use query() or execute()
-     *
-     * @param string $sql The SQL to execute
-     * 
-     * @return int The number of affected rows
      */
     public function rawExec(string $sql): int {
 
@@ -457,9 +453,7 @@ class Connection {
     }
 
     /**
-     * Begin a transaction.
-     *
-     * @return bool True on success
+     * Begins a transaction.
      */
     public function begin(): bool {
 
@@ -468,31 +462,21 @@ class Connection {
     }
 
     /**
-     * Commit a transaction.
-     *
-     * @return bool True on success
+     * Commits the current transaction.
      */
     public function commit(): bool {
-
         return $this->pdo->commit();
-
     }
 
     /**
-     * Rollback a transaction.
-     *
-     * @return bool True on success
+     * Rolls back the current transaction.
      */
     public function rollback(): bool {
-
         return $this->pdo->rollBack();
-
     }
 
     /**
-     * Check if a transaction is active.
-     *
-     * @return bool True if a transaction is active
+     * Checks if a transaction is currently active.
      */
     public function inTransaction(): bool {
 
@@ -501,12 +485,10 @@ class Connection {
     }
 
     /**
-     * Get the last insert ID.
+     * Gets the last insert ID from the database.
      *
-     * @param string $name The name of the sequence object (if any)
-     * 
-     * @return string The last insert ID
-     * 
+     * For databases that support sequences, you can specify the sequence name.
+     *
      * @throws RuntimeException If the last insert ID could not be retrieved
      */
     public function insertId(string $name = ''): string {
@@ -522,25 +504,19 @@ class Connection {
     }
 
     /**
-     * Quote a value for use in a SQL statement.
-     *
-     * @param mixed $value The value to quote
-     * @param int   $type  The parameter type (PDO::PARAM_*)
-     * 
-     * @return string The quoted value
+     * Quotes a value for safe use in SQL statements.
      */
     public function quote(mixed $value, int $type = PDO::PARAM_STR): string {
-
         return $this->pdo->quote($value, $type);
-
     }
 
     /**
-     * Quote an identifier (table or column name) for use in a SQL statement.
+     * Quotes an identifier (table or column name) for the current database.
      *
-     * @param string $name The identifier to quote
-     * 
-     * @return string The quoted identifier
+     * Uses appropriate quoting style based on database type:
+     * - MySQL/SQLite: `identifier`
+     * - PostgreSQL: "identifier"
+     * - SQL Server: [identifier]
      */
     public function quoteIdentifier(string $name): string {
 
@@ -563,20 +539,18 @@ class Connection {
     }
 
     /**
-     * Get the last error information.
+     * Gets the last error information from the database.
      *
-     * @return array The error information
+     * @return array
      */
     public function getLastError(): array {
-
         return $this->pdo->errorInfo();
-
     }
 
     /**
-     * Get information about the database connection.
+     * Gets information about the database connection.
      *
-     * @return array Connection information
+     * @return array{dsn: stdClass, stats: stdClass, driver: string, client: string, server: string} Connection information
      */
     public function getInfo(): array {
 
@@ -597,12 +571,12 @@ class Connection {
     }
 
     /**
-     * Bind named and positional parameters to a PDOStatement.
+     * Binds named and positional parameters to a PDOStatement.
      *
-     * @param PDOStatement $statement The statement to bind parameters to
-     * @param array        $params    The parameters to bind
-     * 
-     * @return void
+     * Handles both named (:param) and positional (?) parameters.
+     * Automatically determines parameter types.
+     *
+     * @param array<string|int, mixed> $params Parameters to bind
      */
     protected function bindParams(PDOStatement $statement, array $params): void {
 

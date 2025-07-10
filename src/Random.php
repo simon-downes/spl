@@ -9,19 +9,15 @@ namespace spl;
 use InvalidArgumentException;
 
 /**
- * Random data generation utility class.
- * 
- * Provides methods for generating random strings.
+ * Utility for generating random strings.
+ *
+ * Provides both cryptographically secure and non-secure random string generation.
  */
 class Random {
 
     /**
-     * Returns a string of cryptographically strong random hex digits.
+     * Generates cryptographically strong random hex digits.
      *
-     * @param int $length The length of the hex string (must be even)
-     * 
-     * @return string The random hex string
-     * 
      * @throws InvalidArgumentException If the length is not an even number
      */
     public static function hex(int $length = 40): string {
@@ -37,13 +33,9 @@ class Random {
     }
 
     /**
-     * Returns a string of the specified length containing only the characters in the $allowed parameter.
-     * This function is not cryptographically strong.
+     * Generates a random string using the specified character set.
      *
-     * @param int    $length  Length of the desired string
-     * @param string $allowed The characters allowed to appear in the output
-     * 
-     * @return string The random string
+     * Uses mt_rand() so this is NOT cryptographically secure.
      */
     public static function string(int $length, string $allowed = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'): string {
 

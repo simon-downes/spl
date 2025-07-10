@@ -13,28 +13,30 @@ use ReflectionObject;
 use RuntimeException;
 
 /**
- * Debug utility class.
- * 
- * Provides methods for debugging variables and objects.
+ * Debug utilities for variable inspection and error handling.
+ *
+ * Provides methods for:
+ * - Dumping variables with detailed type information
+ * - Formatting exceptions with stack traces
+ * - Converting errors to exceptions
+ * - Handling uncaught exceptions
  */
 class Debug {
 
     /**
-     * Maximum recursion depth.
-     *
-     * @var int
+     * Current recursion depth when dumping nested structures.
      */
     protected int $depth;
 
     /**
-     * Stack of objects being processed to detect recursion.
+     * Stack of objects being processed to detect circular references.
      *
      * @var array<int, object>
      */
     protected array $stack;
 
     /**
-     * Create a new Debug instance.
+     * Creates a new Debug instance with initialized tracking properties.
      */
     public function __construct() {
         $this->depth  = 0;
@@ -42,11 +44,10 @@ class Debug {
     }
 
     /**
-     * Convert a variable to a string representation.
+     * Converts any variable to a detailed string representation.
      *
-     * @param mixed $var The variable to convert
-     * 
-     * @return string The string representation of the variable
+     * Handles all PHP types with special formatting for arrays and objects.
+     * Detects circular references in objects to prevent infinite recursion.
      */
     public function toString(mixed $var): string {
 
@@ -86,28 +87,48 @@ class Debug {
 
     }
 
-    public function getNull( mixed $var): string {
+    /**
+     * Formats a null value.
+     */
+    public function getNull(mixed $var): string {
         return 'null';
     }
 
+    /**
+     * Formats a boolean value.
+     */
     public function getBoolean(bool $var): string {
         return sprintf('bool(%s)', $var ? 'true' : 'false');
     }
 
+    /**
+     * Formats an integer value.
+     */
     public function getInteger(int $var): string {
         return "int({$var})";
     }
 
+    /**
+     * Formats a float value.
+     */
     public function getFloat(float $var): string {
         return "float({$var})";
     }
 
+    /**
+     * Formats a string value with length and encoding information.
+     */
     public function getString(string $str): string {
         $enc = mb_detect_encoding($str, ['UTF-8', 'WINDOWS-1252', 'ISO-8859-1', 'ASCII'], true);
         $enc = ($enc == 'ASCII') ? '' : "; $enc";
         return sprintf('string(%d%s) "%s"', strlen($str), $enc, $str);
     }
 
+    /**
+     * Formats an array with nested indentation.
+     *
+     * Recursively formats array elements with proper indentation.
+     */
     public function getArray(array $arr): string {
 
         $this->depth++;
@@ -124,6 +145,12 @@ class Debug {
 
     }
 
+    /**
+     * Formats an object with property details.
+     *
+     * Handles circular references and provides special formatting for exceptions.
+     * Uses reflection to access object properties.
+     */
     public function getObject(object $obj): string {
 
         if ($item = $this->recursionCheck($obj)) {
@@ -151,6 +178,11 @@ class Debug {
 
     }
 
+    /**
+     * Formats a Throwable (Exception or Error) with detailed information.
+     *
+     * Includes message, code, file, line, and formatted stack trace.
+     */
     public function getThrowable(Throwable $e): string {
 
         $item = get_class($e);
@@ -193,34 +225,41 @@ class Debug {
 
     }
 
-    /** @phpstan-ignore-next-line  resources have no type hint */
+    /**
+     * Formats a resource with type and metadata information.
+     *
+     * Provides special handling for common resource types like streams and curl handles.
+     *
+     * @param resource|\CurlHandle $resource The resource to format
+     */
     public function getResource($resource): string {
+        // Handle CurlHandle objects (PHP 8+)
+        if ($resource instanceof \CurlHandle) {
+            $type = 'curl';
+            $id = spl_object_id($resource);
+            $item = sprintf("resource(#%d; %s)", $id, $type);
+            $item .= $this->getMeta(curl_getinfo($resource));
+            return $item;
+        }
 
+        // Handle standard resources
         $type = get_resource_type($resource);
-
         $item = (string) $resource;
         $item = sprintf("resource(%s; %s)", substr($item, strpos($item, '#')), $type);
 
-        // try and get some additional info about the resource
-        switch ($type) {
-            case 'stream':
-                $item .= $this->getMeta(
-                    stream_get_meta_data($resource),
-                );
-                break;
-
-            case 'curl':
-                $item .= $this->getMeta(
-                    curl_getinfo($resource),
-                );
-                break;
-
+        // Get additional info about the resource
+        if ($type === 'stream') {
+            $item .= $this->getMeta(stream_get_meta_data($resource));
         }
 
         return $item;
-
     }
 
+    /**
+     * Formats metadata arrays with proper indentation and key formatting.
+     *
+     * Used for formatting resource metadata and exception details.
+     */
     protected function getMeta(array $meta): string {
 
         $this->depth++;
@@ -239,8 +278,12 @@ class Debug {
 
     }
 
+    /**
+     * Formats a stack trace for better readability.
+     *
+     * Processes each frame to include file, line, class, and function information.
+     */
     protected function getTrace(array $trace): array {
-
         $lines = [];
 
         foreach ($trace as $i => $frame) {
@@ -269,6 +312,11 @@ class Debug {
 
     }
 
+    /**
+     * Gets all properties of an object using reflection.
+     *
+     * Accesses public, protected, and private properties.
+     */
     protected function getObjectProperties(object $obj): string {
 
         // we use reflection to access all the object's properties (public, protected and private)
@@ -285,6 +333,13 @@ class Debug {
 
     }
 
+    /**
+     * Gets all properties from a class and its parent classes.
+     *
+     * Recursively collects properties from the entire inheritance chain.
+     *
+     * @return array<string, \ReflectionProperty>
+     */
     protected function getClassProperties(ReflectionClass $class): array {
 
         $properties = [];
@@ -304,6 +359,13 @@ class Debug {
 
     }
 
+    /**
+     * Checks for circular references in object processing.
+     *
+     * Returns a placeholder string if the object is already being processed.
+     *
+     * @return string Empty string if no recursion detected, otherwise a placeholder
+     */
     protected function recursionCheck(object $obj): string {
 
         if (end($this->stack) === $obj) {

@@ -9,9 +9,10 @@ namespace spl;
 use DateTimeInterface;
 
 /**
- * String manipulation utility class.
- * 
- * Provides a collection of useful string manipulation methods.
+ * String manipulation utilities.
+ *
+ * Provides methods for common string operations like pluralization,
+ * URL parsing, truncation, and case conversion.
  */
 class Str {
 
@@ -115,15 +116,14 @@ class Str {
     private function __construct() {}
 
     /**
-     * Parse a URL string into an array of components.
-     * 
-     * Similar to the native parse_url except that the returned array will contain all components
-     * and the query component is replaced with a decoded array.
+     * Enhanced URL parser that returns all components with defaults.
      *
-     * @param string $url      The URL to parse
-     * @param array  $defaults Default values for components
-     * 
-     * @return array|null An array of URL components or null if the URL could not be parsed
+     * Improves on parse_url() by:
+     * - Always including all URL components
+     * - Converting query string to an associative array
+     * - Supporting default values
+     *
+     * @return array<string, mixed>|null URL components or null if parsing fails
      */
     public static function parseURL(string $url, array $defaults = []): array|null {
 
@@ -150,12 +150,10 @@ class Str {
     }
 
     /**
-     * Build a URL string from an array of components.
+     * Builds a URL string from component parts.
      *
-     * @param array $parts   The URL components
-     * @param bool  $show_pw Whether to include the password in the URL
-     * 
-     * @return string The built URL
+     * By default, passwords are masked as '<password>' for security.
+     * Set show_pw to true to include the actual password.
      */
     public static function buildURL(array $parts, bool $show_pw = false): string {
 
@@ -369,11 +367,9 @@ class Str {
     }
 
     /**
-     * Convert a singular word to its plural form.
+     * Converts a singular word to its plural form.
      *
-     * @param string $str The singular word to pluralize
-     * 
-     * @return string The plural form of the word
+     * Handles irregular plurals and uncountable words.
      */
     public static function pluralise(string $str): string {
 
@@ -402,11 +398,9 @@ class Str {
     }
 
     /**
-     * Convert a plural word to its singular form.
+     * Converts a plural word to its singular form.
      *
-     * @param string $str The plural word to singularize
-     * 
-     * @return string The singular form of the word
+     * Handles irregular plurals and uncountable words.
      */
     public static function singularise(string $str): string {
 

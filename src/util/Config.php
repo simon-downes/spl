@@ -11,10 +11,14 @@ use LogicException;
 use RuntimeException;
 
 /**
- * Configuration container class.
- * 
- * Provides access to configuration values with dot notation support.
- * 
+ * Configuration container with dot notation support.
+ *
+ * Provides access to nested configuration values using dot notation:
+ * - $config->get('database.host')
+ * - $config['database.port']
+ *
+ * Supports array access interface and value caching.
+ *
  * @implements ArrayAccess<string|int, mixed>
  */
 class Config implements ArrayAccess {
@@ -27,12 +31,8 @@ class Config implements ArrayAccess {
     protected array $cache = [];
 
     /**
-     * Load configuration from a file.
+     * Loads configuration from a PHP file that returns an array.
      *
-     * @param string $file The path to the configuration file
-     * 
-     * @return static A new Config instance
-     * 
      * @throws RuntimeException If the file cannot be read
      */
     public static function load(string $file): static {
@@ -46,13 +46,9 @@ class Config implements ArrayAccess {
     }
 
     /**
-     * Load configuration from a file if it exists.
-     * 
-     * Returns an empty Config instance if the file doesn't exist.
+     * Loads configuration from a file if it exists.
      *
-     * @param string $file The path to the configuration file
-     * 
-     * @return static A new Config instance
+     * Returns an empty Config instance if the file doesn't exist or isn't readable.
      */
     public static function safeLoad(string $file): static {
 
@@ -69,41 +65,29 @@ class Config implements ArrayAccess {
     }
 
     /**
-     * Create a new Config instance.
-     *
-     * @param array $data The configuration data
+     * Creates a new Config instance with optional initial data.
      */
     public function __construct(protected array $data = []) {}
 
     /**
-     * Check if a configuration key exists.
-     *
-     * @param int|string $key The configuration key
-     * 
-     * @return bool True if the key exists
+     * Checks if a configuration key exists and has a non-null value.
      */
     public function has(int|string $key): bool {
         return $this->get($key, null) !== null;
     }
 
     /**
-     * Get all configuration data.
-     *
-     * @return array All configuration data
+     * Returns all configuration data as an array.
      */
     public function all(): array {
         return $this->data;
     }
 
     /**
-     * Get a configuration value.
-     * 
-     * Supports dot notation for accessing nested values.
+     * Gets a configuration value using dot notation for nested values.
      *
-     * @param int|string $key     The configuration key
-     * @param mixed      $default The default value if the key doesn't exist
-     * 
-     * @return mixed The configuration value or the default
+     * Uses a cache for frequently accessed values to improve performance.
+     * Returns default value if the key doesn't exist.
      */
     public function get(int|string $key, mixed $default = null): mixed {
 
@@ -135,37 +119,22 @@ class Config implements ArrayAccess {
     }
 
     /**
-     * Check if an offset exists.
-     *
-     * @param mixed $offset The offset to check
-     * 
-     * @return bool True if the offset exists
+     * Implements ArrayAccess::offsetExists
      */
     public function offsetExists($offset): bool {
         return $this->has($offset);
     }
 
     /**
-     * Get the value at the specified offset.
-     *
-     * @param mixed $offset The offset to get
-     * 
-     * @return mixed The value at the offset
+     * Implements ArrayAccess::offsetGet
      */
     public function offsetGet($offset): mixed {
         return $this->get($offset);
     }
 
     /**
-     * Set the value at the specified offset.
-     * 
-     * This operation is not supported as Config is immutable.
+     * Implements ArrayAccess::offsetSet
      *
-     * @param mixed $offset The offset to set
-     * @param mixed $value  The value to set
-     * 
-     * @return void
-     * 
      * @throws LogicException Always thrown as Config is immutable
      */
     public function offsetSet($offset, $value): void {
@@ -173,14 +142,8 @@ class Config implements ArrayAccess {
     }
 
     /**
-     * Unset the value at the specified offset.
-     * 
-     * This operation is not supported as Config is immutable.
+     * Implements ArrayAccess::offsetUnset
      *
-     * @param mixed $offset The offset to unset
-     * 
-     * @return void
-     * 
      * @throws LogicException Always thrown as Config is immutable
      */
     public function offsetUnset($offset): void {

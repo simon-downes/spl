@@ -7,16 +7,17 @@
 namespace spl\web;
 
 /**
- * HTTP request class.
- * 
- * Represents an HTTP request with methods to access request data.
+ * HTTP request representation with convenient access methods.
+ *
+ * Provides access to request data including path, query parameters,
+ * headers, cookies, and body with automatic JSON parsing.
  */
 class Request {
 
     /**
-     * Create a new Request instance from global variables.
+     * Creates a Request instance from PHP's global variables.
      *
-     * @return static A new Request instance
+     * Extracts data from $_SERVER, $_GET, $_POST, $_COOKIE, etc.
      */
     public static function fromGlobals(): static {
 
@@ -44,7 +45,7 @@ class Request {
         $auth = array_filter([
             'username' => $_SERVER['PHP_AUTH_USER'] ?? false,
             'password' => $_SERVER['PHP_AUTH_PW'] ?? false,
-        ], function($value) { return $value !== false; });
+        ], function ($value) { return $value !== false; });
 
         return new static(
             $_SERVER['REQUEST_METHOD'],
@@ -61,17 +62,15 @@ class Request {
     }
 
     /**
-     * Create a new Request instance.
+     * Creates a new Request instance with the specified parameters.
      *
-     * @param string     $method    The HTTP method
-     * @param string     $host      The host name
-     * @param string     $path      The request path
-     * @param array      $query     The query parameters
-     * @param mixed      $body      The request body
-     * @param array      $headers   The request headers
-     * @param array      $cookies   The request cookies
-     * @param string     $client_ip The client IP address
-     * @param array      $attributes Additional request attributes
+     * Normalizes headers to lowercase and automatically parses JSON bodies.
+     *
+     * @param array<string, string> $query      Query parameters from URL
+     * @param mixed                 $body       Request body (string or parsed array)
+     * @param array<string, string> $headers    HTTP headers
+     * @param array<string, string> $cookies    Request cookies
+     * @param array<string, mixed>  $attributes Additional request metadata
      */
     public function __construct(
         protected string $method,
@@ -109,92 +108,55 @@ class Request {
 
     }
 
-    /**
-     * Get the host name.
-     *
-     * @return string The host name
-     */
     public function getHost(): string {
         return $this->host;
     }
 
-    /**
-     * Get the HTTP method.
-     *
-     * @return string The HTTP method
-     */
     public function getMethod(): string {
         return $this->method;
     }
 
-    /**
-     * Get the request path.
-     *
-     * @return string The request path
-     */
     public function getPath(): string {
         return $this->path;
     }
 
     /**
-     * Look up a value in the query parameters or request body.
-     *
-     * @param string $k       The key to look up
-     * @param mixed  $default The default value if the key doesn't exist
-     * 
-     * @return mixed The value or the default
+     * Looks up a value in query parameters first, then request body.
      */
     public function lookup(string $k, mixed $default = null): mixed {
         return $this->query[$k] ?? $this->body[$k] ?? $default;
     }
 
-    /**
-     * Get the request body.
-     *
-     * @return mixed The request body
-     */
     public function getBody(): mixed {
         return $this->body;
     }
 
     /**
-     * Get a request header.
+     * Gets a request header (case-insensitive).
      *
-     * @param string $name The header name
-     * 
-     * @return string The header value or an empty string if not found
+     * Returns empty string if header doesn't exist.
      */
     public function getHeader(string $name): string {
         return $this->headers[strtolower($name)] ?? '';
     }
 
     /**
-     * Get a cookie value.
+     * Gets a cookie value.
      *
-     * @param string $name The cookie name
-     * 
-     * @return string The cookie value or an empty string if not found
+     * Returns empty string if cookie doesn't exist.
      */
     public function getCookie(string $name): string {
         return $this->cookies[$name] ?? '';
     }
 
-    /**
-     * Get the client IP address.
-     *
-     * @return string The client IP address
-     */
     public function getSourceIP(): string {
         return $this->client_ip;
     }
 
     /**
-     * Get a request attribute.
+     * Gets a request attribute with optional default value.
      *
-     * @param string $name    The attribute name
-     * @param mixed  $default The default value if the attribute doesn't exist
-     * 
-     * @return mixed The attribute value or the default
+     * Attributes are additional metadata attached to the request.
      */
     public function getAttribute(string $name, mixed $default = null): mixed {
         return $this->attributes[$name] ?? $default;
@@ -205,7 +167,7 @@ class Request {
      *
      * @param string $name  The attribute name
      * @param mixed  $value The attribute value
-     * 
+     *
      * @return void
      */
     public function setAttribute(string $name, mixed $value): void {

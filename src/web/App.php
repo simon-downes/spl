@@ -12,9 +12,10 @@ use spl\SPL;
 use spl\util\Config;
 
 /**
- * Web application class.
- * 
- * Handles routing and request processing for web applications.
+ * Simple web application router and request handler.
+ *
+ * Routes requests to handlers based on regex path matching.
+ * Supports method-specific routes and automatic response conversion.
  */
 class App {
 
@@ -26,11 +27,12 @@ class App {
     protected static array $routes = [];
 
     /**
-     * Process the specified web request.
+     * Processes a web request by matching routes and executing handlers.
      *
-     * @param Request $request The request to process
-     * 
-     * @return void
+     * Automatically converts handler return values to Response objects:
+     * - Strings are converted to HTML responses
+     * - Arrays are converted to JSON responses
+     * - Response objects are used as-is
      */
     public static function handle(Request $request): void {
 
@@ -86,11 +88,9 @@ class App {
     }
 
     /**
-     * Loads routes from the specified file.
+     * Loads routes from a PHP file that returns an array of route definitions.
      *
-     * @param string $file The path to the routes file
-     * 
-     * @return void
+     * Supports method-specific routes with syntax: "(METHOD1|METHOD2):path"
      */
     protected static function loadRoutes(string $file): void {
 
@@ -114,13 +114,10 @@ class App {
     }
 
     /**
-     * Try and match the requested path against available routes.
+     * Matches a request path against available routes.
      *
-     * @param string $path   The request path
-     * @param string $method The request method
-     * 
-     * @return array{0: callable|string, 1: array} A tuple containing the handler for the request and the parameters to use
-     * 
+     * @return array{0: callable|string, 1: array} [handler, parameters]
+     *
      * @throws WebException If no route matches or the method is not allowed
      */
     protected static function match(string $path, string $method): array {

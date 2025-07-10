@@ -12,16 +12,19 @@ use RuntimeException;
 use spl\database\Connection;
 
 /**
- * Static database helper class.
- * 
- * Provides a convenient static interface to database operations.
+ * Static facade for database operations.
+ *
+ * Provides a convenient static interface to database operations by lazily creating
+ * a database connection from environment variables when first needed.
+ *
+ * Usage:
+ *   DB::query("SELECT * FROM users WHERE id = ?", [1]);
+ *   DB::getRow("SELECT * FROM users WHERE id = ?", [1]);
  */
 class DB {
 
     /**
-     * The database connection instance.
-     *
-     * @var Connection
+     * Lazily initialized database connection
      */
     protected static Connection $db;
 
@@ -31,16 +34,11 @@ class DB {
     private function __construct() {}
 
     /**
-     * Forward static method calls to the database connection.
+     * Forwards all method calls to the database connection.
      *
-     * Creates a database connection if one doesn't exist yet.
+     * Lazily creates a connection from DB_DSN environment variable if needed.
      *
-     * @param string $name      The method name to call
-     * @param array  $arguments The arguments to pass to the method
-     * 
-     * @return mixed The result of the method call
-     * 
-     * @throws RuntimeException     If DB_DSN environment variable is not set
+     * @throws RuntimeException If DB_DSN environment variable is not set
      * @throws BadMethodCallException If the method doesn't exist on the connection
      */
     public static function __callStatic(string $name, array $arguments): mixed {
