@@ -185,16 +185,15 @@ class Http {
     public static function parse_status_line(string $status_line): array {
 
         // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-        $parts = explode(" ", trim($status_line), 3);
-
-        if (count($parts) != 3) {
+        // Use regex to validate and extract components
+        if (!preg_match('/^HTTP\/(\d+\.\d+)\s+(\d+)\s+(.+)$/', trim($status_line), $matches)) {
             throw new RuntimeException("Invalid status line: {$status_line}");
         }
 
         return [
-            'http_version'   => str_replace('HTTP/', '', $parts[0]),
-            'status_code'    => (int) $parts[1],
-            'status_message' => $parts[2],
+            'http_version'   => $matches[1],
+            'status_code'    => (int) $matches[2],
+            'status_message' => $matches[3],
         ];
 
     }

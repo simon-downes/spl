@@ -280,7 +280,7 @@ class Str {
         $pow   = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow   = min($pow, count($units) - 1);
         $bytes /= (1 << (10 * $pow));
-        return round($bytes, $precision) . ' ' . $units[$pow];
+        return number_format($bytes, $precision) . ' ' . $units[$pow];
     }
 
     /**
@@ -439,7 +439,7 @@ class Str {
         $seconds = 0;
 
         if (preg_match('/^\d+:\d+$/', $str)) {
-            list(, $minutes, $seconds) = array_map('intval', explode(':', $str));
+            list($minutes, $seconds) = array_map('intval', explode(':', $str));
         }
         elseif (preg_match('/^\d+:\d+:\d+$/', $str)) {
             list($hours, $minutes, $seconds) = array_map('intval', explode(':', $str));

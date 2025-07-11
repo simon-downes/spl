@@ -101,12 +101,9 @@ class Log {
      * Messages are logged if their level is >= the configured level.
      */
     protected static function shouldLog(string $level): bool {
-
-        static $app_level = null;
-
-        if (!$app_level) {
-            $app_level = static::LEVELS[strtoupper((string) env('APP_LOG_LEVEL', ''))] ?? static::LEVELS["INFO"];
-        }
+        // Get the current app log level from environment (no caching)
+        $app_level_name = strtoupper((string) env('APP_LOG_LEVEL', 'INFO'));
+        $app_level = static::LEVELS[$app_level_name] ?? static::LEVELS["INFO"];
 
         $this_level = static::LEVELS[$level] ?? static::LEVELS["INFO"];
 

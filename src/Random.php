@@ -36,8 +36,14 @@ class Random {
      * Generates a random string using the specified character set.
      *
      * Uses mt_rand() so this is NOT cryptographically secure.
+     *
+     * @throws InvalidArgumentException If the allowed charset is empty
      */
     public static function string(int $length, string $allowed = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'): string {
+
+        if (empty($allowed)) {
+            throw new InvalidArgumentException("Character set cannot be empty");
+        }
 
         $out = '';
         $max = strlen($allowed) - 1;
