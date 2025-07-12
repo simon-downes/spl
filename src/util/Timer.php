@@ -135,6 +135,11 @@ class Timer {
      */
     public static function getMarks(): array {
 
+        // no marks if timer hasn't been started
+        if (empty(static::$marks)) {
+            return [];
+        }
+
         $marks = [];
 
         $start = static::$marks[0][1];
