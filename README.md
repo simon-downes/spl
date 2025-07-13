@@ -73,6 +73,85 @@ For CLI output, a stack trace is shown.
 
 For web output, a debug page is shown if `SPL_DEBUG` is `true`, otherwise a generic `503` error page is shown. A stack trace is also logged (see Logging below).
 
+### Command Line Interface (CLI)
+
+**Parse command line arguments:**
+```php
+// Assuming $argv = ['script.php', '-a', '--foo-bar', '-x=value', '--option=value']
+$options = CLI::parseArgs($argv);
+// $options = ['a' => true, 'foo-bar' => true, 'x' => 'value', 'option' => 'value']
+
+// Check if an option exists
+if (CLI::hasOption('a')) {
+    // Do something
+}
+
+// Get an option value with a default
+$value = CLI::getOption('option', 'default');
+
+// Get all positional arguments (non-option arguments)
+$args = CLI::getArgs();
+```
+
+**Output formatted text:**
+```php
+// Print without newline
+CLI::print("Hello [green]World[reset]!");
+
+// Print with newline
+CLI::println("This is [bold][blue]blue and bold[reset] text.");
+
+// Available formatting tokens:
+// Colors: [black], [red], [green], [yellow], [blue], [magenta], [cyan], [white]
+// Bright colors: [bright_black], [bright_red], [bright_green], etc.
+// Background colors: [bg_black], [bg_red], [bg_green], etc.
+// Background bright colors: [bg_bright_black], [bg_bright_red], etc.
+// Styles: [bold], [dim], [italic], [underline], [blink], [reverse], [hidden]
+// Reset: [reset]
+```
+
+**Get user input:**
+```php
+// Basic prompt
+$name = CLI::prompt("Enter your name");
+
+// Prompt with default value
+$path = CLI::prompt("Enter path", "/var/www");
+
+// Yes/no confirmation
+if (CLI::confirm("Are you sure?", true)) {
+    // User confirmed
+}
+
+// Selection from options
+$choice = CLI::select("Choose a color", [
+    'r' => 'Red',
+    'g' => 'Green',
+    'b' => 'Blue',
+], 'g');
+```
+
+**Create a CLI application with commands:**
+```php
+// In config/commands.php
+return [
+    'hello' => function($options, $args) {
+        $name = $args[0] ?? 'World';
+        CLI::println("[green]Hello, {$name}![reset]");
+    },
+    'help' => function($options, $args) {
+        CLI::println("Available commands:");
+        CLI::println("  hello [name] - Say hello to someone");
+        CLI::println("  help - Show this help message");
+    },
+];
+
+// In your entry script (e.g., cli.php)
+SPL::run(getcwd());
+
+// Run with: php cli.php hello Simon
+```
+
 ### Database
 
 ### Logging

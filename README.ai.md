@@ -81,6 +81,7 @@ SPL follows a simple architecture with these key concepts:
 ```
 /src
 ├── bootstrap.php         # Core bootstrap file that defines constants and helper functions
+├── CLI.php               # Command Line Interface utilities
 ├── DB.php                # Database facade
 ├── error.php             # Error page template
 ├── Http.php              # HTTP client for making requests
@@ -136,6 +137,62 @@ try {
 } catch (Exception $e) {
     SPL::error($e);
 }
+```
+
+### CLI
+
+Command Line Interface utilities for parsing arguments, formatted output, user input, and command handling.
+
+```php
+// Class methods
+public static function parseArgs(array $argv): array
+public static function hasOption(string $name): bool
+public static function getOption(string $name, mixed $default = null): mixed
+public static function getArgs(): array
+public static function print(string $text): void
+public static function println(string $text): void
+public static function prompt(string $prompt, string $default = ''): string
+public static function confirm(string $prompt, bool $default = true): bool
+public static function select(string $prompt, array $options, mixed $default = null): mixed
+public static function handle(array $argv): void
+```
+
+Example usage:
+```php
+// Parse command line arguments
+$options = CLI::parseArgs($argv);
+
+// Check if an option exists
+if (CLI::hasOption('verbose')) {
+    CLI::println("[green]Verbose mode enabled[reset]");
+}
+
+// Get an option value with default
+$format = CLI::getOption('format', 'json');
+
+// Get positional arguments
+$files = CLI::getArgs();
+
+// Print formatted text
+CLI::println("This is [bold][blue]blue and bold[reset] text");
+
+// Prompt for user input
+$name = CLI::prompt("Enter your name");
+
+// Prompt with default value
+$path = CLI::prompt("Enter path", "/var/www");
+
+// Ask for confirmation
+if (CLI::confirm("Are you sure?", true)) {
+    // User confirmed
+}
+
+// Selection from options
+$choice = CLI::select("Choose a color", [
+    'r' => 'Red',
+    'g' => 'Green',
+    'b' => 'Blue',
+], 'g');
 ```
 
 ### Log
@@ -901,6 +958,198 @@ return [
     {% endif %}
 </body>
 </html>
+```
+
+### CLI Application with Commands
+
+This example demonstrates how to create a CLI application with multiple commands using the SPL CLI functionality:
+
+#### config/commands.php - Command Definitions
+
+```php
+<?php
+// config/commands.php - Command definitions
+// This file should return an array of command names mapped to callables
+
+use spl\CLI;
+use spl\DB;
+use spl\Log;
+
+return [
+    // Command to list users
+    'users:list' => function($options, $args) {
+        $users = DB::getAll("SELECT id, name, email FROM users");
+        
+        if (empty($users)) {
+            CLI::println("[yellow]No users found.[reset]");
+            return;
+        }
+        
+        CLI::println("[bold]ID  | Name                 | Email[reset]");
+        CLI::println("-----|----------------------|------------------------");
+        
+        foreach ($users as $user) {
+            CLI::println(
+                sprintf("%-4s | %-20s | %s", 
+                    $user['id'], 
+                    $user['name'], 
+                    $user['email']
+                )
+            );
+        }
+        
+        CLI::println("\n[green]Total: " . count($users) . " users[reset]");
+    },
+    
+    // Command to show user details
+    'users:show' => function($options, $args) {
+        $id = $args[0] ?? null;
+        
+        if (!$id) {
+            CLI::println("[red]Error: User ID is required[reset]");
+            exit(1);
+        }
+        
+        $user = DB::getRow("SELECT * FROM users WHERE id = ?", [$id]);
+        
+        if (empty($user)) {
+            CLI::println("[red]Error: User not found[reset]");
+            exit(1);
+        }
+        
+        CLI::println("[bold][blue]User Details:[reset]");
+        CLI::println("  [bold]ID:[reset]         {$user['id']}");
+        CLI::println("  [bold]Name:[reset]       {$user['name']}");
+        CLI::println("  [bold]Email:[reset]      {$user['email']}");
+        CLI::println("  [bold]Created:[reset]    {$user['created_at']}");
+        
+        if (!empty($user['updated_at'])) {
+            CLI::println("  [bold]Updated:[reset]    {$user['updated_at']}");
+        }
+    },
+    
+    // Command to create a new user
+    'users:create' => function($options, $args) {
+        $name = CLI::prompt("Enter user name");
+        
+        if (empty($name)) {
+            CLI::println("[red]Error: Name cannot be empty[reset]");
+            exit(1);
+        }
+        
+        $email = CLI::prompt("Enter user email");
+        
+        if (empty($email)) {
+            CLI::println("[red]Error: Email cannot be empty[reset]");
+            exit(1);
+        }
+        
+        // Check if email already exists
+        $exists = DB::getOne("SELECT COUNT(*) FROM users WHERE email = ?", [$email]);
+        
+        if ($exists) {
+            CLI::println("[red]Error: Email already registered[reset]");
+            exit(1);
+        }
+        
+        // Confirm creation
+        if (!CLI::confirm("Create user with these details?", true)) {
+            CLI::println("[yellow]User creation cancelled.[reset]");
+            return;
+        }
+        
+        // Insert the new user
+        DB::execute(
+            "INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)",
+            [$name, $email, date('Y-m-d H:i:s')]
+        );
+        
+        $id = DB::insertId();
+        CLI::println("[green]User created successfully with ID: {$id}[reset]");
+    },
+    
+    // Command to delete a user
+    'users:delete' => function($options, $args) {
+        $id = $args[0] ?? null;
+        
+        if (!$id) {
+            CLI::println("[red]Error: User ID is required[reset]");
+            exit(1);
+        }
+        
+        $user = DB::getRow("SELECT name, email FROM users WHERE id = ?", [$id]);
+        
+        if (empty($user)) {
+            CLI::println("[red]Error: User not found[reset]");
+            exit(1);
+        }
+        
+        // Confirm deletion
+        if (!CLI::confirm("[red]Are you sure you want to delete user {$id} ({$user['name']})?[reset]", false)) {
+            CLI::println("[yellow]User deletion cancelled.[reset]");
+            return;
+        }
+        
+        // Delete the user
+        DB::execute("DELETE FROM users WHERE id = ?", [$id]);
+        CLI::println("[green]User {$id} deleted successfully.[reset]");
+    },
+    
+    // Help command
+    'help' => function($options, $args) {
+        CLI::println("[bold][bright_cyan]SPL CLI Application[reset]");
+        CLI::println("Available commands:");
+        CLI::println("  [green]users:list[reset]           List all users");
+        CLI::println("  [green]users:show [id][reset]      Show details for a specific user");
+        CLI::println("  [green]users:create[reset]         Create a new user");
+        CLI::println("  [green]users:delete [id][reset]    Delete a user");
+        CLI::println("  [green]help[reset]                 Show this help message");
+    }
+];
+```
+
+#### cli.php - Entry Script
+
+```php
+<?php
+// cli.php - Entry script for CLI application
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+use spl\SPL;
+use spl\CLI;
+
+// Run the application
+// This will:
+// - Initialize the framework
+// - Load environment variables
+// - Handle CLI commands using the commands.php file
+// - Catch and display any uncaught exceptions
+try {
+    SPL::run(__DIR__);
+} catch (Throwable $e) {
+    CLI::println("[red]Error: {$e->getMessage()}[reset]");
+    exit(1);
+}
+```
+
+#### Usage
+
+```bash
+# Show help
+php cli.php help
+
+# List all users
+php cli.php users:list
+
+# Show user details
+php cli.php users:show 1
+
+# Create a new user (interactive)
+php cli.php users:create
+
+# Delete a user
+php cli.php users:delete 1
 ```
 
 ### Simple CLI Command

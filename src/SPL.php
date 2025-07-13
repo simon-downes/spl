@@ -15,6 +15,7 @@ use spl\util\Debug;
 use spl\util\Env;
 use spl\web\Request;
 use spl\web\App as WebApp;
+use spl\CLI;
 
 use Twig\Loader\FilesystemLoader as TwigLoader;
 use Twig\Environment as TwigEnvironment;
@@ -137,12 +138,10 @@ class SPL {
             static::init($directory);
 
             if (SPL_CLI) {
-
+                CLI::handle($GLOBALS['argv']);
             }
             else {
-
                 WebApp::handle(Request::fromGlobals());
-
             }
 
         }
