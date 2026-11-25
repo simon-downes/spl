@@ -37,6 +37,9 @@ $err = [
 //  $err['name'] = $names[$error->getSeverity()];
 // }
 
+// escape values for HTML output - exception data can contain user input
+$h = static fn(mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
 // it's an error - don't send a 200 code!
 if (!headers_sent()) {
     header(sprintf("%s 500 Internal Server Error", $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1'));
@@ -47,7 +50,7 @@ if (!headers_sent()) {
 
 <head>
     <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
-    <title><?=$err['name']?></title>
+    <title><?=$h($err['name'])?></title>
     <link rel="icon" href="/favicon.ico" type="image/vnd.microsoft.icon"/>
     <style type="text/css">
 
@@ -139,8 +142,8 @@ if (!headers_sent()) {
 <body>
 
 <div id="header" class="<?=SPL_DEBUG ? 'debug' : ''?>">
-    <h1><?=SPL_DEBUG ? $err['name'] : 'Internal Service Error'?></h1>
-    <?php if (SPL_DEBUG) {?><p><?=$err['message']?><?= $err['code'] ? " (Code {$err['code']})" : '' ?></p><?php } ?>
+    <h1><?=SPL_DEBUG ? $h($err['name']) : 'Internal Service Error'?></h1>
+    <?php if (SPL_DEBUG) {?><p><?=$h($err['message'])?><?= $err['code'] ? ' (Code ' . $h($err['code']) . ')' : '' ?></p><?php } ?>
 </div>
 
 <?php if (!SPL_DEBUG) {?>
@@ -160,9 +163,9 @@ else { ?>
     <div class="panel">
         <p>
             <strong>File:</strong>
-            <code><?=$err['file']?></code>&nbsp;&nbsp;
+            <code><?=$h($err['file'])?></code>&nbsp;&nbsp;
             <strong>Line: </strong>
-            <code><?=$err['line']?></code>
+            <code><?=$h($err['line'])?></code>
         </p>
     </div>
 
@@ -177,11 +180,11 @@ else { ?>
             <?php
                 if (isset($item['file'])) { ?>
             <p>
-                <strong>File:</strong> <code><?=$item['file']; ?></code>
-                <?php if (isset($item['line'])) { ?> &nbsp;&nbsp;&nbsp;<strong>Line:</strong> <code><?=$item['line'] ?></code><?php } ?>
+                <strong>File:</strong> <code><?=$h($item['file'])?></code>
+                <?php if (isset($item['line'])) { ?> &nbsp;&nbsp;&nbsp;<strong>Line:</strong> <code><?=$h($item['line'])?></code><?php } ?>
             </p>
             <?php } ?>
-            <p><strong>Function: </strong><code><?=isset($item['class']) ? $item['class'] . $item['type'] : ''?><?=$item['function'] . '()'; ?></code></p>
+            <p><strong>Function: </strong><code><?=isset($item['class']) ? $h($item['class'] . $item['type']) : ''?><?=$h($item['function']) . '()'?></code></p>
         </li>
         <?php } ?>
     </ol>

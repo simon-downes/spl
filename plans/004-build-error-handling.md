@@ -154,15 +154,15 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 - **Edge cases:** non-fatal last error (warning) -> ignored; fatal while `$handling` -> one-line `error_log()`.
 - **Deliverable:** memory-exhausted scripts are logged once with the request ID and shown on STDERR.
 - **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; manual `php -S` fixture: a route exhausting memory returns the error page and logs under the app root.
-- **Outcome:** `SPL::handleShutdown()` and `FATAL_ERRORS` in src/SPL.php, registered in `init()`. `testFatalErrorIsHandledAtShutdown` (out of memory, out of memory in debug, time limit): exit 255, `ErrorException`/`"ERROR"` severity and the PHP message on STDERR, logged exactly once with the request ID. The planned 32 KB reserve was tried and removed: with it set to an empty string the out-of-memory cases still passed. `composer check` OK (88 tests). Manual `php -S` check: see Outcome of M5 / Review (done with the browser evidence).
+- **Outcome:** `SPL::handleShutdown()` and `FATAL_ERRORS` in src/SPL.php, registered in `init()`. `testFatalErrorIsHandledAtShutdown` (out of memory, out of memory in debug, time limit): exit 255, `ErrorException`/`"ERROR"` severity and the PHP message on STDERR, logged exactly once with the request ID. The planned 32 KB reserve was tried and removed: with it set to an empty string the out-of-memory cases still passed. `composer check` OK (88 tests). Manual `php -S` check (app in /tmp/spl-web, cwd `public/`, `APP_DEBUG=true`, `APP_LOG_FILE=logs/app.log`): `GET /oom` returned 500 with the `ErrorException` page showing `Allowed memory size of 16777216 bytes exhausted`; `/tmp/spl-web/logs/app.log` got exactly one entry and nothing was created under `public/`.
 
-### [ ] M5 — Escape the error page
+### [x] M5 — Escape the error page
 
 - **Approach:** Bug fix: write `tests/ErrorPageTest.php` (`#[RunInSeparateProcess]`, define `SPL_DEBUG`, set `$error`, `ob_start()`, `require` src/error.php) and see it fail; then add the `$h` helper in src/error.php and use it for every echoed value.
 - **Test seam:** rendered HTML of src/error.php.
 - **Deliverable:** the debug error page shows exception data as text.
 - **Verify:** `vendor/bin/phpunit tests/ErrorPageTest.php` passes (failed before); `composer check` passes.
-- **Outcome:**
+- **Outcome:** `$h` helper in src/error.php, used for the title, name, message, code, file, line and trace file/line/class/type/function. `ErrorPageTest` (3 separate-process tests: message/file escaping, trace `eval()'d` quote and `->`, production page hides data) failed 2/3 before and passes after; `composer check` OK (92 tests). Browser before/after screenshots of `GET /xss?q=<b>bold</b> <marquee>injected</marquee>` show rendered markup before and literal text after.
 
 ## Deviations
 
