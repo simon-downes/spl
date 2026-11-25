@@ -2,6 +2,7 @@
 
 namespace spl\tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -12,6 +13,22 @@ use PHPUnit\Framework\TestCase;
  * output and log files.
  */
 final class SPLTest extends TestCase {
+
+    private const string MESSAGE = 'spl-test-boom';
+
+    /**
+     * Prints the request ID, then reports an exception through SPL::error().
+     */
+    private const string CAUGHT_ERROR = <<<'PHP'
+        SPL::init(__DIR__);
+        echo SPL_REQUEST_ID;
+        try {
+            throw new RuntimeException('spl-test-boom');
+        }
+        catch (Throwable $e) {
+            SPL::error($e);
+        }
+        PHP;
 
     private string $root;
 
@@ -54,6 +71,75 @@ final class SPLTest extends TestCase {
         $this->assertSame(0, $result['exit'], $result['stderr']);
         $this->assertStringContainsString('[INFO] hello', $result['stderr']);
         $this->assertFileDoesNotExist("{$this->root}/php");
+    }
+
+    public function testCliErrorWritesTraceToStderrWhenLoggingToFile(): void {
+        $result = $this->runFixture(self::CAUGHT_ERROR, ['APP_LOG_FILE' => 'logs/app.log']);
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertStringContainsString('RuntimeException {', $result['stderr']);
+        $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE));
+
+        $log = $this->readLog('logs/app.log');
+        $this->assertStringContainsString("{$result['stdout']} [ERROR] RuntimeException {", $log);
+        $this->assertSame(1, substr_count($log, self::MESSAGE));
+    }
+
+    /**
+     * @param array<string, string> $env
+     */
+    #[DataProvider('terminalLogProvider')]
+    public function testCliErrorIsPrintedOnceWhenLogIsTheTerminal(array $env): void {
+        $result = $this->runFixture(self::CAUGHT_ERROR, $env);
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
+    }
+
+    /**
+     * @return array<string, array{array<string, string>}>
+     */
+    public static function terminalLogProvider(): array {
+        return [
+            'no log file'                 => [[]],
+            'php log file'                => [['APP_LOG_FILE' => 'php']],
+            'error level not logged'      => [['APP_LOG_LEVEL' => 'critical']],
+            'php log file, level ignored' => [['APP_LOG_FILE' => 'php', 'APP_LOG_LEVEL' => 'critical']],
+        ];
+    }
+
+    public function testCliErrorIsPrintedWhenErrorLogIsAFile(): void {
+        $result = $this->runFixture(self::CAUGHT_ERROR, [], ["error_log={$this->root}/php.log"]);
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
+        $this->assertStringContainsString(self::MESSAGE, $this->readLog('php.log'));
+    }
+
+    /**
+     * @param array<string, string> $env
+     */
+    #[DataProvider('debugProvider')]
+    public function testLogWriteFailureStillReportsTheError(array $env): void {
+        // a regular file where the log directory should be, so the log can't be written
+        touch("{$this->root}/blocker");
+
+        $result = $this->runFixture(self::CAUGHT_ERROR, $env + ['APP_LOG_FILE' => 'blocker/app.log']);
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
+        $this->assertStringContainsString('blocker/app.log', $result['stderr']);
+        $this->assertStringNotContainsString('PHP Fatal error', $result['stderr']);
+    }
+
+    /**
+     * @return array<string, array{array<string, string>}>
+     */
+    public static function debugProvider(): array {
+        return [
+            'debug'    => [['APP_DEBUG' => 'true']],
+            'no debug' => [['APP_DEBUG' => 'false']],
+        ];
     }
 
     /**

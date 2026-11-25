@@ -75,10 +75,10 @@ Codebase facts:
 - MUST route uncaught Throwables after `SPL::init()` (without `SPL::run()`) to `SPL::error()`.
   - AC: fixture `init()` + `throw new RuntimeException('boom')` exits 1; the log file has `[ERROR]`, the fixture's `SPL_REQUEST_ID` and `boom`.
 - MUST log fatal errors at shutdown with the request ID and show the trace on STDERR (CLI) / the error page (web).
-  - AC: fixture exhausting `memory_limit` via many small allocations: log file has the request ID and `Allowed memory size` once; STDERR contains `ErrorException` and `Allowed memory size`; exit code 255.
+  - AC: fixture exhausting `memory_limit` via many small allocations: log file has the request ID and `Allowed memory size` exactly once; STDERR contains `ErrorException` and `Allowed memory size`; exit code 255.
   - AC (manual): `php -S` fixture route that exhausts memory returns HTML containing `Allowed memory size` and the log file under the app root gets the entry.
 - MUST handle each error once and never recurse if `SPL::error()` fails.
-  - AC: in the uncaught-exception and fatal fixtures the log file contains exactly one `Message:` line.
+  - AC: in the uncaught-exception and fatal fixtures the log file contains the error message exactly once.
   - AC: debug fixture whose `APP_LOG_FILE` is under a regular file (unwritable) exits 1 and STDERR contains the original message and the logging failure, and no `PHP Fatal error`.
 - MUST, in the CLI, write the formatted trace to STDERR when the log destination is not the terminal, and not print it twice when it is.
   - AC: fixture with `APP_LOG_FILE=logs/app.log`: STDERR contains `RuntimeException {` and `boom`.
@@ -129,18 +129,18 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 - **Verify:** `vendor/bin/phpunit tests/LogTest.php tests/SPLTest.php` passes (relative-path test failed before the fix); `composer check` passes.
 - **Outcome:** `Log::setFile()`/`usesErrorLog()`/`destination()`/`isErrorLog()` and directory creation in src/Log.php; `init()` now calls `Log::setFile()` and no longer turns `php` into `SPL_ROOT/php`. Before the fix `testRelativeLogFileResolvesAgainstRootAndCreatesDirectory` and `testAbsoluteLogFileIsUsedAsIs` failed (file missing); after, `phpunit tests/LogTest.php tests/SPLTest.php` OK (11 tests) and `composer check` OK (71 tests).
 
-### [ ] M2 — CLI errors reach STDERR once, with a safe fallback
+### [x] M2 — CLI errors reach STDERR once, with a safe fallback
 
-- **Approach:** Rewrite `SPL::error()` per D10/D11: `$handling` guard, `Log::error()` in try/catch with `error_log()` fallback, `fwrite(STDERR, $trace . "\n")` in the CLI unless already on the terminal, outer catch -> one-line `error_log()`, `finally` resets `$handling`, then `exit`. Until M3 the fixtures wrap their code in `try { ... } catch (Throwable $e) { SPL::error($e); }`.
+- **Approach:** Rewrite `SPL::error()` per D10/D11: `$handling` guard, `Log::error()` in try/catch with `error_log()` fallback, `fwrite(STDERR, $trace . "\n")` in the CLI unless already on the terminal, outer catch -> one-line `error_log()`, `finally` resets `$handling`, then `exit`. These fixtures call `SPL::error()` explicitly from a catch block (`SPLTest::CAUGHT_ERROR`); M3 adds separate uncaught-exception fixtures.
 - **Test seam:** fixture process STDERR/exit code.
 - **Edge cases:** no `APP_LOG_FILE` / `php` -> printed once; `APP_LOG_LEVEL=critical` -> printed; unwritable log in debug -> fallback, exit 1.
 - **Deliverable:** a failing CLI script shows the trace on the terminal exactly once.
 - **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; `composer check` passes.
-- **Outcome:**
+- **Outcome:** `SPL::error()` split into the guarded `error()`, `report()` and `summary()` (src/SPL.php). Before the change 6 of the new SPLTest cases failed (no STDERR output with a log file, with `APP_LOG_LEVEL=critical`, with an `error_log` ini file, and on log-write failure); after, `composer check` OK (79 tests). The generic "handling failed" catch is not exercised by a test (no realistic trigger in the CLI).
 
 ### [ ] M3 — Exception and error handlers
 
-- **Approach:** Add `handleException()` (calls `static::error($e)`) and `handleError()` (D1), registered at the end of `init()` (D15); error handler only when `SPL_DEBUG`. Switch M2 fixtures to uncaught throws.
+- **Approach:** Add `handleException()` (calls `static::error($e)`) and `handleError()` (D1), registered at the end of `init()` (D15); error handler only when `SPL_DEBUG`. New fixtures throw without catching.
 - **Test seam:** fixture process; `SPL::handleError()` called directly in-process.
 - **Edge cases:** `@` suppression; `APP_DEBUG=false` leaves warnings alone.
 - **Deliverable:** `init()`-only scripts log uncaught exceptions and, in debug, fail on warnings.

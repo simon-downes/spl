@@ -29,6 +29,11 @@ use Twig\Environment as TwigEnvironment;
 class SPL {
 
     /**
+     * Set while error() is handling an error, so a failure inside it isn't handled recursively.
+     */
+    protected static bool $handling = false;
+
+    /**
      * Cannot be instantiated.
      */
     private function __construct() {}
@@ -159,27 +164,79 @@ class SPL {
     /**
      * Handles errors by logging them and displaying appropriate output.
      *
-     * For CLI requests, only logs the error.
-     * For web requests, displays an error page and logs the error.
+     * The error is logged at ERROR level. For web requests an error page is displayed.
+     * For CLI requests the formatted error is also written to STDERR, unless the log already
+     * went there (error_log() with no error_log ini setting).
+     *
+     * If the log can't be written the error goes to error_log() instead. If handling the error
+     * fails, or an error occurs while one is being handled, a one-line summary goes to error_log().
      *
      * Will exit the application with the provided exit code unless exit is 0.
      */
     public static function error(Throwable $error, int $exit = 1): void {
 
-        $trace = (new Debug())->toString($error);
+        // something failed while we were handling an error so keep it simple
+        if (static::$handling) {
+            error_log(static::summary($error));
+        }
+        else {
 
-        // log the error
-        Log::error($trace);
+            static::$handling = true;
 
-        // for cli scripts we've already logged the error to the correct place
-        // but for web pages we need to return something to the user
-        if (!SPL_CLI) {
-            require __DIR__ . '/error.php';
+            try {
+                static::report($error);
+            }
+            catch (Throwable $e) {
+                error_log(static::summary($error) . ' (error handling failed: ' . static::summary($e) . ')');
+            }
+            finally {
+                static::$handling = false;
+            }
+
         }
 
         if ($exit) {
             exit($exit);
         }
+
+    }
+
+    /**
+     * Logs an error and outputs it to the user (error page or STDERR).
+     */
+    protected static function report(Throwable $error): void {
+
+        $trace = (new Debug())->toString($error);
+
+        $to_error_log = Log::usesErrorLog('ERROR');
+
+        try {
+            Log::error($trace);
+        }
+        catch (Throwable $e) {
+            // couldn't write to the log so fall back to PHP's error log
+            error_log($trace);
+            error_log('Unable to write log: ' . $e->getMessage());
+            $to_error_log = true;
+        }
+
+        // web pages need to return something to the user
+        if (!SPL_CLI) {
+            require __DIR__ . '/error.php';
+        }
+        // in the CLI, error_log() writes to the terminal when the error_log ini setting is empty
+        elseif (!$to_error_log || ini_get('error_log') !== '') {
+            fwrite(STDERR, $trace . "\n");
+        }
+
+    }
+
+    /**
+     * Returns a one-line description of an error.
+     */
+    protected static function summary(Throwable $error): string {
+
+        return sprintf('%s: %s in %s:%d', get_class($error), $error->getMessage(), $error->getFile(), $error->getLine());
 
     }
 
