@@ -187,14 +187,19 @@ raw body.
   `vendor/bin/phpunit tests/HttpTest.php`: 29 tests OK in 2.2 s; cs-check 0 files;
   phpstan `[OK] No errors`; `composer test` 101 tests OK.
 
-### [ ] M3 — JSON request bodies
+### [x] M3 — JSON request bodies
 
 - **Approach:** `json` option per D7; content-type check is a case-insensitive
   `str_starts_with(strtolower($header), 'content-type:')` over the header list.
 - **Test seam:** `Http::post(..., options: ['json' => ...])` against `/echo`.
 - **Deliverable:** JSON POST arrives encoded with the right content type.
 - **Verify:** `vendor/bin/phpunit tests/HttpTest.php` passes; `composer check` passes.
-- **Outcome:**
+- **Outcome:** `json` option in `request()` (validated by `resolveOptions()`, encoded with
+  `JSON_THROW_ON_ERROR`, Content-Type added unless present). Tests: POST arrives as
+  `{"a":1,"b":[true,null]}` with `application/json`; PUT keeps a lowercase explicit
+  `content-type: application/vnd.x+json`; `json` + body → `InvalidArgumentException`; `NAN`
+  → `JsonException`. `vendor/bin/phpunit tests/HttpTest.php`: 33 tests OK; cs-check 0 files;
+  phpstan `[OK] No errors`; `composer test` 105 tests OK.
 
 ## Deviations
 

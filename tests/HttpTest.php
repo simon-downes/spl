@@ -3,6 +3,7 @@
 namespace spl\tests;
 
 use InvalidArgumentException;
+use JsonException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -249,6 +250,38 @@ final class HttpTest extends TestCase {
 
         $this->assertSame('GET', $response->json()['method']);
 
+    }
+
+    public function testJsonOptionEncodesBodyAndSetsContentType(): void {
+
+        $response = Http::post(self::url('router', '/echo'), options: ['json' => ['a' => 1, 'b' => [true, null]]]);
+
+        $this->assertSame(
+            ['method' => 'POST', 'content_type' => 'application/json', 'body' => '{"a":1,"b":[true,null]}'],
+            $response->json(),
+        );
+
+    }
+
+    public function testJsonOptionKeepsExplicitContentType(): void {
+
+        $response = Http::put(self::url('router', '/echo'), ['content-type: application/vnd.x+json'], options: ['json' => ['a' => 1]]);
+
+        $this->assertSame(
+            ['method' => 'PUT', 'content_type' => 'application/vnd.x+json', 'body' => '{"a":1}'],
+            $response->json(),
+        );
+
+    }
+
+    public function testJsonOptionWithBodyIsRejected(): void {
+        $this->expectException(InvalidArgumentException::class);
+        Http::post('http://127.0.0.1:1/', [], 'raw', ['json' => ['a' => 1]]);
+    }
+
+    public function testJsonOptionWithUnencodableValueThrows(): void {
+        $this->expectException(JsonException::class);
+        Http::post('http://127.0.0.1:1/', options: ['json' => NAN]);
     }
 
     /**

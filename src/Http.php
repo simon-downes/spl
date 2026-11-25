@@ -7,6 +7,7 @@
 namespace spl;
 
 use InvalidArgumentException;
+use JsonException;
 use RuntimeException;
 
 /**
@@ -25,6 +26,7 @@ use RuntimeException;
  *   $users    = $response->json();
  *   $response = Http::post('https://api.example.com/users', ['Content-Type: text/plain'], 'John');
  *   $response = Http::get('https://example.com/slow', options: ['timeout' => 60, 'follow_redirects' => true]);
+ *   $response = Http::post('https://api.example.com/users', options: ['json' => ['name' => 'John']]);
  */
 class Http {
 
@@ -43,6 +45,8 @@ class Http {
      * - connect_timeout: seconds allowed to establish the connection (int >= 0, 0 = no limit)
      * - timeout: seconds allowed for the whole request (int >= 0, 0 = no limit)
      * - follow_redirects: follow `Location` responses, up to MAX_REDIRECTS hops (bool)
+     *
+     * request() also accepts a `json` option, which has no default; see request().
      */
     public const DEFAULTS = [
         'connect_timeout'  => 10,
@@ -134,9 +138,13 @@ class Http {
      *
      * @param list<string> $headers Request headers, e.g. ['Accept: application/json']
      * @param string|array<string, mixed> $body Raw body string, or an array sent as multipart/form-data
-     * @param array<string, mixed> $options Overrides for DEFAULTS
+     * @param array<string, mixed> $options Overrides for DEFAULTS, plus `json`: a value sent
+     *        as the JSON-encoded body (adds `Content-Type: application/json` unless a
+     *        Content-Type header is given; can't be combined with `$body`)
      *
-     * @throws InvalidArgumentException If the method is empty or an option is unknown or invalid
+     * @throws InvalidArgumentException If the method is empty, an option is unknown or
+     *                                  invalid, or both `$body` and `json` are given
+     * @throws JsonException If the `json` value can't be encoded
      * @throws RuntimeException If the transfer fails (code is the cURL error number) or
      *                          the response has no status line
      */
@@ -148,7 +156,26 @@ class Http {
             throw new InvalidArgumentException('HTTP method cannot be empty');
         }
 
-        $options = self::resolveOptions($options);
+        $settings = self::resolveOptions($options);
+
+        if (array_key_exists('json', $options)) {
+
+            if ($body !== '' && $body !== []) {
+                throw new InvalidArgumentException("Http option 'json' can't be combined with a request body");
+            }
+
+            $body = json_encode($options['json'], JSON_THROW_ON_ERROR);
+
+            $has_content_type = false;
+            foreach ($headers as $header) {
+                $has_content_type = $has_content_type || str_starts_with(strtolower(ltrim($header)), 'content-type:');
+            }
+
+            if (!$has_content_type) {
+                $headers[] = 'Content-Type: application/json';
+            }
+
+        }
 
         $ch = curl_init($url);
 
@@ -157,10 +184,10 @@ class Http {
         }
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $options['connect_timeout']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, $options['timeout']);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $settings['connect_timeout']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $settings['timeout']);
 
-        if ($options['follow_redirects']) {
+        if ($settings['follow_redirects']) {
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_MAXREDIRS, static::MAX_REDIRECTS);
         }
@@ -286,7 +313,8 @@ class Http {
     }
 
     /**
-     * Merges request options over DEFAULTS and validates them.
+     * Merges request options over DEFAULTS and validates them. The `json` option is
+     * allowed but handled by request().
      *
      * @param array<string, mixed> $options
      *
@@ -297,7 +325,7 @@ class Http {
     private static function resolveOptions(array $options): array {
 
         foreach (array_keys($options) as $key) {
-            if (!array_key_exists($key, self::DEFAULTS)) {
+            if ($key !== 'json' && !array_key_exists($key, self::DEFAULTS)) {
                 throw new InvalidArgumentException("Unknown Http option: {$key}");
             }
         }
