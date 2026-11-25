@@ -183,13 +183,14 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   `text` and the flags table test failed (3 failures); after: `phpunit --filter ConnectionTest` OK
   (26 tests), PHPStan 0 errors, cs-check clean.
 
-### [ ] M4 — getInfo reports server info for non-SQLite drivers
+### [x] M4 — getInfo reports server info for non-SQLite drivers
 
 - **Approach:** `!==` fix. Tests per D10; the stub test failed before.
 - **Test seam:** `Connection::getInfo()`.
 - **Deliverable:** `getInfo()['server']` includes server info on non-SQLite connections.
 - **Verify:** `vendor/bin/phpunit --filter ConnectionTest` passes.
-- **Outcome:**
+- **Outcome:** `!==` fix. Before: the stub test got `'3.46.1'` instead of `'3.46.1: Uptime: 42'`;
+  after: `phpunit --filter ConnectionTest` OK (28 tests), PHPStan 0 errors, cs-check clean.
 
 ### [ ] M5 — DB facade `@method static` docblocks
 

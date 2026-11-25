@@ -5,6 +5,7 @@ namespace spl\tests\database;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use PDO;
 use RuntimeException;
 use spl\database\Connection;
 use stdClass;
@@ -279,6 +280,41 @@ final class ConnectionTest extends TestCase {
 
         $this->assertSame(['off' => 0, 'on' => 1], $this->db->getAssoc('SELECT name, active FROM flags ORDER BY name'));
         $this->assertSame('off', $this->db->getOne('SELECT name FROM flags WHERE active = :flag', ['flag' => false]));
+    }
+
+    public function testGetInfoForSqlite(): void {
+        $this->seed();
+
+        $info = $this->db->getInfo();
+        $version = (new PDO('sqlite::memory:'))->getAttribute(PDO::ATTR_SERVER_VERSION);
+
+        $this->assertSame('sqlite', $info['driver']);
+        $this->assertSame($version, $info['server']);
+        $this->assertSame($version, $info['client']);
+        $this->assertSame('sqlite::memory:', $info['dsn']->pdo);
+        $this->assertSame(3, $info['stats']->query_count);
+    }
+
+    public function testGetInfoAppendsServerInfoForOtherDrivers(): void {
+        // SQLite doesn't support ATTR_SERVER_INFO, so stub it and pretend to be MySQL
+        $db = new class ('sqlite://localhost/:memory:') extends Connection {
+            public function reconnect(): void {
+                $this->pdo = new class ('sqlite::memory:') extends PDO {
+                    public function getAttribute(int $attribute): mixed {
+                        return $attribute === PDO::ATTR_SERVER_INFO ? 'Uptime: 42' : parent::getAttribute($attribute);
+                    }
+                };
+            }
+
+            public function setType(string $type): void {
+                $this->dsn->type = $type;
+            }
+        };
+        $db->setType(Connection::TYPE_MYSQL);
+
+        $version = (new PDO('sqlite::memory:'))->getAttribute(PDO::ATTR_SERVER_VERSION);
+
+        $this->assertSame("{$version}: Uptime: 42", $db->getInfo()['server']);
     }
 
 }

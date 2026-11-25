@@ -564,7 +564,7 @@ class Connection {
 
         $server = $this->pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
 
-        if (!$this->dsn->type == static::TYPE_SQLITE) {
+        if ($this->dsn->type !== static::TYPE_SQLITE) {
             $server .= ': ' . $this->pdo->getAttribute(PDO::ATTR_SERVER_INFO);
         }
 
