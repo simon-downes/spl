@@ -4,6 +4,7 @@ namespace spl\tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use ErrorException;
+use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\TestCase;
 use spl\SPL;
 
@@ -65,6 +66,30 @@ final class SPLTest extends TestCase {
 
         $this->assertSame(0, $result['exit'], $result['stderr']);
         $this->assertStringContainsString('[INFO] hello', (string) file_get_contents($file));
+    }
+
+    /**
+     * Windows absolute paths are kept as they are. On Linux they are plain relative names, so the
+     * file lands in the fixture's working directory rather than under the root.
+     */
+    #[DataProvider('windowsPathProvider')]
+    public function testWindowsAbsoluteLogFileIsNotResolvedAgainstRoot(string $file): void {
+        $result = $this->runFixture('SPL::init(__DIR__); Log::info("hello");', ['APP_LOG_FILE' => $file]);
+
+        $this->assertSame(0, $result['exit'], $result['stderr']);
+        $this->assertSame(['.env', 'run.php'], $this->listDir($this->root));
+        $this->assertNotSame([], $this->listDir($this->cwd));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function windowsPathProvider(): array {
+        return [
+            'drive, backslash'     => ['C:\\logs\\app.log'],
+            'drive, forward slash' => ['c:/logs/app.log'],
+            'UNC'                  => ['\\\\server\\share\\app.log'],
+        ];
     }
 
     public function testPhpLogFileUsesErrorLog(): void {
@@ -242,15 +267,39 @@ final class SPLTest extends TestCase {
      */
     #[DataProvider('debugProvider')]
     public function testLogWriteFailureStillReportsTheError(array $env, string $failure): void {
-        // a regular file where the log directory should be, so the log can't be written
-        touch("{$this->root}/blocker");
+        // a directory where the log file should be, so the log can't be written
+        mkdir("{$this->root}/app.log");
 
-        $result = $this->runFixture(self::CAUGHT_ERROR, $env + ['APP_LOG_FILE' => 'blocker/app.log']);
+        $result = $this->runFixture(self::CAUGHT_ERROR, $env + ['APP_LOG_FILE' => 'app.log']);
 
         $this->assertSame(1, $result['exit'], $result['stderr']);
         $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
-        $this->assertStringContainsString("{$failure} file_put_contents({$this->root}/blocker/app.log)", $result['stderr']);
+        $this->assertStringContainsString("{$failure} file_put_contents({$this->root}/app.log)", $result['stderr']);
         $this->assertStringNotContainsString('PHP Fatal error', $result['stderr']);
+    }
+
+    /**
+     * @param array<string, string> $env
+     */
+    #[DataProvider('debugProvider')]
+    public function testUncreatableLogDirectoryReportsTheRealCause(array $env, string $failure): void {
+        if (posix_geteuid() === 0) {
+            $this->markTestSkipped('root can write to a read-only directory');
+        }
+
+        mkdir("{$this->root}/ro", 0555);
+
+        try {
+            $result = $this->runFixture(self::CAUGHT_ERROR, $env + ['APP_LOG_FILE' => 'ro/sub/app.log']);
+        }
+        finally {
+            chmod("{$this->root}/ro", 0755);
+        }
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
+        $this->assertStringContainsString("{$failure} Unable to create log directory {$this->root}/ro/sub: mkdir(): Permission denied", $result['stderr']);
+        $this->assertStringNotContainsString('No such file or directory', $result['stderr']);
     }
 
     /**
@@ -265,6 +314,28 @@ final class SPLTest extends TestCase {
         ];
     }
 
+    public function testFixtureOutputLargerThanAPipeBufferIsRead(): void {
+        // stderr fills its pipe before anything is written to stdout
+        $result = $this->runFixture('fwrite(STDERR, str_repeat("e", 200000)); echo str_repeat("o", 200000);');
+
+        $this->assertSame(0, $result['exit']);
+        $this->assertSame(200000, strlen($result['stdout']));
+        $this->assertSame(200000, strlen($result['stderr']));
+    }
+
+    public function testFixtureThatNeverFinishesFailsTheTest(): void {
+        try {
+            $this->runFixture('echo "started"; while (true) { usleep(100000); }', timeout: 1);
+        }
+        catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Fixture did not finish within 1 s', $e->getMessage());
+            $this->assertStringContainsString('started', $e->getMessage());
+            return;
+        }
+
+        $this->fail('The fixture was not stopped');
+    }
+
     /**
      * Runs a fixture script in a separate PHP process.
      *
@@ -273,9 +344,10 @@ final class SPLTest extends TestCase {
      *
      * @param array<string, string> $env
      * @param list<string> $ini
+     * @param int $timeout Seconds before the fixture is killed and the test fails
      * @return array{exit: int, stdout: string, stderr: string}
      */
-    private function runFixture(string $code, array $env = [], array $ini = []): array {
+    private function runFixture(string $code, array $env = [], array $ini = [], int $timeout = 30): array {
         $lines = [];
         foreach ($env as $k => $v) {
             $lines[] = "{$k}={$v}";
@@ -303,12 +375,51 @@ final class SPLTest extends TestCase {
         $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->cwd, $process_env);
         $this->assertIsResource($process);
 
-        $stdout = (string) stream_get_contents($pipes[1]);
-        $stderr = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
+        // read both pipes as data arrives, so a fixture blocked on a full stderr pipe can't deadlock
+        // us while we wait for stdout, and give up at the deadline so a stuck fixture can't hang
+        $open   = [1 => $pipes[1], 2 => $pipes[2]];
+        $output = [1 => '', 2 => ''];
+        foreach ($open as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
 
-        return ['exit' => proc_close($process), 'stdout' => $stdout, 'stderr' => $stderr];
+        $deadline = microtime(true) + $timeout;
+
+        while ($open !== []) {
+
+            $remaining = $deadline - microtime(true);
+
+            if ($remaining <= 0) {
+                proc_terminate($process, 9);
+                foreach ($open as $pipe) {
+                    fclose($pipe);
+                }
+                proc_close($process);
+                $this->fail("Fixture did not finish within {$timeout} s\nstdout: {$output[1]}\nstderr: {$output[2]}");
+            }
+
+            $read   = array_values($open);
+            $write  = null;
+            $except = null;
+
+            if (stream_select($read, $write, $except, (int) $remaining, (int) (fmod($remaining, 1) * 1_000_000)) === false) {
+                $this->fail('stream_select() failed while reading the fixture output');
+            }
+
+            foreach ($open as $fd => $pipe) {
+                if (!in_array($pipe, $read, true)) {
+                    continue;
+                }
+                $output[$fd] .= (string) fread($pipe, 65536);
+                if (feof($pipe)) {
+                    fclose($pipe);
+                    unset($open[$fd]);
+                }
+            }
+
+        }
+
+        return ['exit' => proc_close($process), 'stdout' => $output[1], 'stderr' => $output[2]];
     }
 
     private function readLog(string $path): string {
