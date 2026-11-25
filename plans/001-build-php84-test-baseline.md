@@ -1,6 +1,6 @@
 # 001 — PHP 8.4 floor, stable tooling and a minimal PHPUnit baseline
 
-Status: building
+Status: reviewing
 Branch: build-it/001-php84-test-baseline (base: master @ 98cb6cf)
 Worktree: /workspace/.git/build-it-worktrees/001-php84-test-baseline
 
@@ -192,7 +192,7 @@ test class per covered `src/` class, mirrored under `tests/`.
   default; `prompt`/`select` on `/dev/null` → exit 255 `Unexpected end of input` (was a
   `TypeError`, also 255).
 
-### [ ] M3 — Remaining minimal happy-path tests
+### [x] M3 — add remaining minimal happy-path tests
 
 - **Approach:** Add `EnvTest` (safeLoad of a temp file: plain, `true`/`false`/`null`, quoted,
   `${VAR}` interpolation, comment skipped, existing value not overwritten, missing → default),
@@ -207,7 +207,12 @@ test class per covered `src/` class, mirrored under `tests/`.
 - **Deliverable:** the full minimal suite passes under `composer check`.
 - **Verify:** `composer check` exits 0; PHPUnit summary shows 0 failures/deprecations/warnings
   and time < 5 s.
-- **Outcome:**
+- **Outcome:** Added `tests/util/EnvTest.php`, `tests/StrTest.php`, `tests/web/ResponseTest.php`,
+  `tests/web/RequestTest.php`; extended `tests/database/ConnectionTest.php`. `composer check`:
+  cs-check 0 of 25 files, PHPStan `[OK] No errors`, PHPUnit `OK (60 tests, 128 assertions)` in
+  0.025 s, exit 0. Random order (seeds 1, 42, 1234, 99999): all OK. Fail-fast: with a broken file
+  in `tests/`, `composer check` exited 4 at cs-check and never ran phpstan/phpunit.
+  `.phpunit.cache` does not appear in `git status`.
 
 ## Deviations
 
