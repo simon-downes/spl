@@ -253,4 +253,32 @@ final class ConnectionTest extends TestCase {
         $this->assertFileExists($root . '/rel.db');
     }
 
+    /**
+     * @return array<string, array{mixed, string}>
+     */
+    public static function bindTypeProvider(): array {
+        return [
+            'false'  => [false, 'integer'],
+            'true'   => [true, 'integer'],
+            'null'   => [null, 'null'],
+            'int'    => [5, 'integer'],
+            'string' => ['5', 'text'],
+            'float'  => [1.5, 'text'],
+        ];
+    }
+
+    #[DataProvider('bindTypeProvider')]
+    public function testBindsParameterTypes(mixed $value, string $type): void {
+        $this->assertSame($type, $this->db->getOne('SELECT typeof(?)', [$value]));
+    }
+
+    public function testBindsBoolValues(): void {
+        $this->db->rawExec('CREATE TABLE flags (name TEXT, active INTEGER)');
+        $this->db->execute('INSERT INTO flags (name, active) VALUES (?, ?)', ['off', false]);
+        $this->db->execute('INSERT INTO flags (name, active) VALUES (?, ?)', ['on', true]);
+
+        $this->assertSame(['off' => 0, 'on' => 1], $this->db->getAssoc('SELECT name, active FROM flags ORDER BY name'));
+        $this->assertSame('off', $this->db->getOne('SELECT name FROM flags WHERE active = :flag', ['flag' => false]));
+    }
+
 }

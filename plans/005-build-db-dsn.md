@@ -172,14 +172,16 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   relative + `SPL_ROOT` test passed before and after (existing behaviour). After: full suite OK
   (85 tests, then StrTest 38 OK), PHPStan 0 errors, cs-check clean, no `spl-*` files left in /tmp.
 
-### [ ] M3 — Typed bool and null binding
+### [x] M3 — Typed bool and null binding
 
 - **Approach:** In `bindParams()` choose the type with a `match (true)` on `null`/`bool`/`int`.
   Failing `typeof(?)` tests first.
 - **Test seam:** `Connection::getOne()` / `getRow()` against SQLite.
 - **Deliverable:** `false` binds as integer 0.
 - **Verify:** `vendor/bin/phpunit --filter ConnectionTest` passes; the bool cases failed before.
-- **Outcome:**
+- **Outcome:** `match (true)` picks NULL/BOOL/INT/STR. Before: `typeof(?)` for `false`/`true` was
+  `text` and the flags table test failed (3 failures); after: `phpunit --filter ConnectionTest` OK
+  (26 tests), PHPStan 0 errors, cs-check clean.
 
 ### [ ] M4 — getInfo reports server info for non-SQLite drivers
 

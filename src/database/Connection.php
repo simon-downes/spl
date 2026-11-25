@@ -582,7 +582,8 @@ class Connection {
      * Binds named and positional parameters to a PDOStatement.
      *
      * Handles both named (:param) and positional (?) parameters.
-     * Automatically determines parameter types.
+     * Types are determined from the value: null as PDO::PARAM_NULL, bool as PDO::PARAM_BOOL,
+     * int as PDO::PARAM_INT and anything else as PDO::PARAM_STR.
      *
      * @param array<string|int, mixed> $params Parameters to bind
      */
@@ -590,11 +591,12 @@ class Connection {
 
         foreach ($params as $name => $value) {
 
-            $type = PDO::PARAM_STR;
-
-            if (is_int($value)) {
-                $type = PDO::PARAM_INT;
-            }
+            $type = match (true) {
+                $value === null  => PDO::PARAM_NULL,
+                is_bool($value)  => PDO::PARAM_BOOL,
+                is_int($value)   => PDO::PARAM_INT,
+                default          => PDO::PARAM_STR,
+            };
 
             // handle positional (?) and named (:name) parameters
             $name = is_numeric($name) ? (int) $name + 1 : ":{$name}";
