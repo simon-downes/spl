@@ -127,6 +127,15 @@ final class StrTest extends TestCase {
         $this->assertSame('/my db%41', $parts['path']);
     }
 
+    public function testParseURLAcceptsEmptyAuthority(): void {
+        $parts = Str::parseURL('sqlite:///var/data/app.db', ['host' => 'fallback']);
+
+        $this->assertIsArray($parts);
+        $this->assertSame('sqlite', $parts['scheme']);
+        $this->assertSame('fallback', $parts['host']);
+        $this->assertSame('/var/data/app.db', $parts['path']);
+    }
+
     /**
      * @return array<string, array{string}>
      */
@@ -136,6 +145,7 @@ final class StrTest extends TestCase {
             'full'                => ['mysql://user:secret@db.example.com:3307/app'],
             'encoded credentials' => ['mysql://u%40x:p%2Fs%23s%2B@host/db'],
             'user only'           => ['pgsql://admin@host/db'],
+            'empty authority'     => ['sqlite:///var/x.db'],
         ];
     }
 

@@ -150,7 +150,7 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   slash/hash/plus credentials, round trips, mask, makeDSN); after, `phpunit --filter
   'StrTest|ConnectionTest'` OK (46 tests), PHPStan 0 errors.
 
-### [ ] M2 — SQLite absolute paths and `:memory:`
+### [x] M2 — SQLite absolute paths and `:memory:`
 
 - **Approach:** In `parseURL()` rewrite a leading `scheme:///` to `scheme:/` (D4). In
   `makeDSN()`'s SQLite branch: `:memory:` when the trimmed path is `:memory:`; absolute when
@@ -164,7 +164,13 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 - **Edge cases:** `sqlite:///` → "No database name specified"; `sqlite:///tmp/my%20db.db` → `/tmp/my db.db`.
 - **Deliverable:** `sqlite:///var/data/app.db` opens that file; `:memory:` stays in memory with `SPL_ROOT` defined.
 - **Verify:** `vendor/bin/phpunit --filter ConnectionTest` passes; the `SPL_ROOT` + `:memory:` test failed before the change.
-- **Outcome:**
+- **Outcome:** parseURL rewrites `scheme:///` to `scheme:/`; makeDSN's SQLite branch picks
+  `:memory:` / absolute (empty host, `db` = absolute path) / relative (prefixed with `SPL_ROOT`).
+  Before the change 6 new ConnectionTest cases failed (both absolute-path tests, decoded path,
+  `sqlite:///:memory:`, `sqlite:///` rejection, and `:memory:` + `SPL_ROOT` with `PDOException`
+  "unable to open database file") and 2 StrTest cases (empty authority, its round trip); the
+  relative + `SPL_ROOT` test passed before and after (existing behaviour). After: full suite OK
+  (85 tests, then StrTest 38 OK), PHPStan 0 errors, cs-check clean, no `spl-*` files left in /tmp.
 
 ### [ ] M3 — Typed bool and null binding
 

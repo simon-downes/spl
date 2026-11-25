@@ -128,9 +128,15 @@ class Str {
      * user, pass, host and path are decoded once with rawurldecode(), so a literal '+'
      * stays a '+'; the query is decoded by parse_str(). Default values are returned as given.
      *
+     * URLs with an empty authority (scheme:///path) are accepted: host is left to its
+     * default and path is the absolute path, e.g. sqlite:///var/data/app.db.
+     *
      * @return array<string, mixed>|null URL components or null if parsing fails
      */
     public static function parseURL(string $url, array $defaults = []): array|null {
+
+        // parse_url() rejects an empty authority, but scheme:/path parses to the same parts
+        $url = (string) preg_replace('#^([a-z][a-z0-9+.\-]*):///#i', '$1:/', $url);
 
         $parts = parse_url($url);
 

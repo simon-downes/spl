@@ -66,6 +66,14 @@ class Connection {
      *
      * URL format: driver://username:password@host:port/database?option=value
      *
+     * Reserved characters in the username, password or database must be percent-encoded
+     * (e.g. a password of p/ss is written p%2Fss).
+     *
+     * SQLite URLs:
+     * - sqlite:///abs/path/app.db - absolute path
+     * - sqlite://localhost/rel/path/app.db - relative to SPL_ROOT (or the working directory if undefined)
+     * - sqlite://localhost/:memory: or sqlite:///:memory: - in-memory database
+     *
      * @throws RuntimeException If the URL is invalid or the connection fails
      */
     public function __construct(string $url) {
@@ -106,7 +114,7 @@ class Connection {
             'port'    => $parts['port'],
             'user'    => $parts['user'],
             'pass'    => $parts['pass'],
-            'db'      => trim($parts['path'], '/'),
+            'db'      => trim((string) $parts['path'], '/'),
             'options' => $parts['query'],
         ];
 
@@ -134,16 +142,25 @@ class Connection {
 
             case static::TYPE_SQLITE:
 
+                // no host (sqlite:///path) means an absolute path,
+                // otherwise (sqlite://localhost/path) it's relative to SPL_ROOT
+                if ($dsn->db === ':memory:') {
+                    $path = ':memory:';
+                }
+                elseif ($dsn->host === '') {
+                    $dsn->db = $path = (string) $parts['path'];
+                }
+                else {
+                    $path = (defined('SPL_ROOT') ? SPL_ROOT . '/' : '') . $dsn->db;
+                }
+
                 // these should always be null as they're invalid for SQLite connections
                 $dsn->host = 'localhost';
                 $dsn->port = null;
                 $dsn->user = null;
                 $dsn->pass = null;
 
-                $dsn->pdo = sprintf(
-                    'sqlite:%s',
-                    (defined('SPL_ROOT') ? SPL_ROOT . '/' : '') . $dsn->db,
-                );
+                $dsn->pdo = "sqlite:{$path}";
 
                 break;
 
