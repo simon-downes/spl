@@ -177,14 +177,19 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
   pass-through tests added. `AppTest` OK (23 tests, 52 assertions); `composer check` exit 0
   (cs 0/28, PHPStan `[OK] No errors`, PHPUnit OK 83 tests, 180 assertions).
 
-### [ ] M3 — pass named route captures as named arguments
+### [x] M3 — pass named route captures as named arguments
 
 - **Approach:** Tests first (named, reordered named, positional, unknown name). In `match()`,
   after `preg_match`, keep only string keys when any exist, else drop `[0]` as today (D4, D13).
 - **Test seam:** `TestableApp::dispatchRequest()`.
 - **Deliverable:** named-group handlers receive named args; unnamed routes unchanged.
 - **Verify:** `vendor/bin/phpunit tests/web/AppTest.php` passes; `composer check` exit 0.
-- **Outcome:**
+- **Outcome:** Before: the three named-group tests errored with "Cannot use positional argument
+  after named argument during unpacking" and the unknown-name test got that message instead of
+  "Unknown named parameter $user_id". After: `match()` keeps only string keys when any exist;
+  `dispatch()` calls `call_user_func($handler, $request, ...$args)` (baseline entry still
+  matches). `AppTest` OK (28 tests, 58 assertions); `composer check` exit 0 (PHPUnit OK 88
+  tests, 186 assertions).
 
 ### [ ] M4 — answer HEAD on GET routes without a body
 

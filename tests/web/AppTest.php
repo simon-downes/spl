@@ -2,6 +2,7 @@
 
 namespace spl\tests\web;
 
+use Error;
 use InvalidArgumentException;
 use JsonSerializable;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -126,6 +127,49 @@ final class AppTest extends TestCase {
         $this->expectOutputString('{"method":"POST"}');
 
         App::handle($this->request('POST', '/items'));
+    }
+
+    // --- route parameters --------------------------------------------------------------------
+
+    public function testUnnamedGroupsArePassedPositionally(): void {
+        TestableApp::add(['GET:/users/(\d+)/(\w+)' => fn(Request $r, string $id, string $tab) => "{$id}:{$tab}"]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/users/42/posts'));
+
+        $this->assertSame('42:posts', $response->getBody());
+    }
+
+    public function testNamedGroupIsPassedAsNamedArgument(): void {
+        TestableApp::add(['GET:/users/(?<id>\d+)' => fn(Request $r, string $id) => "user {$id}"]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/users/42'));
+
+        $this->assertSame('user 42', $response->getBody());
+    }
+
+    public function testNamedGroupsAreMatchedByNameNotPosition(): void {
+        TestableApp::add(['GET:/p/(?<b>\w+)/(?<a>\w+)' => fn(Request $r, string $a, string $b) => "a={$a} b={$b}"]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/p/second/first'));
+
+        $this->assertSame('a=first b=second', $response->getBody());
+    }
+
+    public function testOnlyNamedGroupsArePassedWhenMixed(): void {
+        TestableApp::add(['GET:/(\w+)/(?<id>\d+)' => fn(Request $r, string ...$args) => json_encode($args, JSON_THROW_ON_ERROR)]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/users/42'));
+
+        $this->assertSame('{"id":"42"}', $response->getBody());
+    }
+
+    public function testNamedGroupWithoutMatchingParameterSurfacesPhpError(): void {
+        TestableApp::add(['GET:/users/(?<user_id>\d+)' => fn(Request $r, string $id) => $id]);
+
+        $this->expectException(Error::class);
+        $this->expectExceptionMessage('Unknown named parameter $user_id');
+
+        TestableApp::dispatchRequest($this->request('GET', '/users/42'));
     }
 
     // --- handler return values ---------------------------------------------------------------

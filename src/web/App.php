@@ -92,11 +92,9 @@ class App {
 
         }
 
-        // we pass the request and response in addition to the route arguments
-        $args = array_merge([$request], $args);
-
-        // call the handler to get the desired response
-        return static::toResponse(call_user_func($handler, ...$args), $request);
+        // we pass the request in addition to the route arguments
+        // (string-keyed arguments become named arguments)
+        return static::toResponse(call_user_func($handler, $request, ...$args), $request);
 
     }
 
@@ -197,7 +195,9 @@ class App {
     /**
      * Matches a request path against available routes.
      *
-     * @return array{0: callable|string, 1: array} [handler, parameters]
+     * Captures are returned by name if the route regex has named groups, otherwise by position.
+     *
+     * @return array{0: callable|string, 1: array<int|string, string>} [handler, parameters]
      *
      * @throws WebException If no route matches or the method is not allowed
      */
@@ -216,7 +216,11 @@ class App {
                 // first element is the complete string, we only care about the sub-matches
                 array_shift($parameters);
 
-                return [$handler, $parameters];
+                // named groups are passed as named arguments, so drop the numeric duplicates
+                // (and any unnamed groups) as named and positional arguments can't be mixed
+                $named = array_filter($parameters, 'is_string', ARRAY_FILTER_USE_KEY);
+
+                return [$handler, $named ?: $parameters];
 
             }
 
