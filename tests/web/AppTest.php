@@ -33,7 +33,7 @@ final class AppTest extends TestCase {
 
     private function assertMethodNotAllowed(string $path, string $method): void {
         try {
-            TestableApp::matchRoute($path, $method);
+            TestableApp::dispatchRequest($this->request($method, $path));
             $this->fail("Expected 405 for {$method} {$path}");
         }
         catch (WebException $e) {
@@ -44,10 +44,9 @@ final class AppTest extends TestCase {
     // --- method prefixes ---------------------------------------------------------------------
 
     public function testSingleMethodPrefix(): void {
-        $handler = fn(Request $r) => 'x';
-        TestableApp::add(['GET:/x' => $handler]);
+        TestableApp::add(['GET:/x' => fn(Request $r) => 'x']);
 
-        $this->assertSame([$handler, []], TestableApp::matchRoute('/x', 'GET'));
+        $this->assertSame('x', TestableApp::dispatchRequest($this->request('GET', '/x'))->getBody());
         $this->assertMethodNotAllowed('/x', 'POST');
     }
 
@@ -63,11 +62,10 @@ final class AppTest extends TestCase {
 
     #[DataProvider('multiMethodKeys')]
     public function testMultiMethodPrefix(string $key): void {
-        $handler = fn(Request $r) => 'x';
-        TestableApp::add([$key => $handler]);
+        TestableApp::add([$key => fn(Request $r) => $r->getMethod()]);
 
-        $this->assertSame($handler, TestableApp::matchRoute('/x', 'GET')[0]);
-        $this->assertSame($handler, TestableApp::matchRoute('/x', 'POST')[0]);
+        $this->assertSame('GET', TestableApp::dispatchRequest($this->request('GET', '/x'))->getBody());
+        $this->assertSame('POST', TestableApp::dispatchRequest($this->request('POST', '/x'))->getBody());
         $this->assertMethodNotAllowed('/x', 'PUT');
     }
 
@@ -249,7 +247,8 @@ final class AppTest extends TestCase {
 
         $this->assertSame($get->getStatus(), $head->getStatus());
         $this->assertSame($get->getHeaders(), $head->getHeaders());
-        $this->assertSame(12, $head->getHeader('content-length'));
+        // compared as a string so the assertion doesn't depend on the header value's type
+        $this->assertSame('12', (string) $head->getHeader('content-length'));
     }
 
     public function testHeadIsNotAllowedWithoutGet(): void {
@@ -259,11 +258,9 @@ final class AppTest extends TestCase {
     }
 
     public function testExplicitHeadHandlerWins(): void {
-        $get  = fn(Request $r) => 'get';
-        $head = fn(Request $r) => 'head';
-        TestableApp::add(['GET:/x' => $get, 'HEAD:/x' => $head]);
+        TestableApp::add(['GET:/x' => fn(Request $r) => 'get', 'HEAD:/x' => fn(Request $r) => 'head']);
 
-        $this->assertSame($head, TestableApp::matchRoute('/x', 'HEAD')[0]);
+        $this->assertSame('head', TestableApp::dispatchRequest($this->request('HEAD', '/x'))->getBody());
     }
 
     public function testRespondSendsBodyForGet(): void {
@@ -334,6 +331,29 @@ final class AppTest extends TestCase {
         $this->assertSame('', $response->getBody());
         $this->assertNull($response->getHeader('content-type'));
         $this->assertNull($response->getHeader('content-length'));
+    }
+
+    /**
+     * PHP adds its default Content-Type (default_mimetype) to any response that doesn't send one;
+     * the CLI SAPI has no headers to inspect, so this checks that setting instead.
+     */
+    #[RunInSeparateProcess]
+    public function testRespondStopsPhpDefaultContentTypeForNoContent(): void {
+        TestableApp::add(['GET:/x' => fn(Request $r) => null]);
+        $request = $this->request('GET', '/x');
+
+        TestableApp::respondTo($request, TestableApp::dispatchRequest($request));
+
+        $this->assertSame('', ini_get('default_mimetype'));
+    }
+
+    #[RunInSeparateProcess]
+    public function testRespondKeepsPhpDefaultContentTypeForOtherResponses(): void {
+        $this->expectOutputString('hello');
+
+        TestableApp::respondTo($this->request('GET', '/x'), Response::html('hello'));
+
+        $this->assertSame('text/html', ini_get('default_mimetype'));
     }
 
     /**
