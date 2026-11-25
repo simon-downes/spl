@@ -36,6 +36,13 @@ class CLI {
     protected static array $args = [];
 
     /**
+     * Stream to read user input from; null means STDIN.
+     *
+     * @var resource|null
+     */
+    protected static $stdin = null;
+
+    /**
      * Formatting tokens and their corresponding ANSI escape codes.
      *
      * @var array<string, string>
@@ -160,44 +167,77 @@ class CLI {
     /**
      * Print a string with formatting tokens.
      *
-     * Tokens are in the format [token_name] and will be replaced with
-     * the corresponding ANSI escape code if colors are enabled.
+     * Tokens are in the format [token_name] and will be replaced with the corresponding
+     * ANSI escape code if colours are enabled, or removed if not.
+     * Bracketed text that isn't a known token is left as is.
      */
     public static function print(string $text): void {
-        echo static::processTokens($text);
+        echo static::processTokens($text, static::useColours(STDOUT));
     }
 
     /**
      * Print a string with formatting tokens followed by a newline.
      *
-     * Tokens are in the format [token_name] and will be replaced with
-     * the corresponding ANSI escape code if colors are enabled.
+     * Tokens are in the format [token_name] and will be replaced with the corresponding
+     * ANSI escape code if colours are enabled, or removed if not.
+     * Bracketed text that isn't a known token is left as is.
      */
     public static function println(string $text): void {
-        echo static::processTokens($text), PHP_EOL;
+        echo static::processTokens($text, static::useColours(STDOUT)), PHP_EOL;
     }
 
     /**
-     * Process formatting tokens in a string.
+     * Determine if output written to a stream should use colours.
+     *
+     * Colours are used only when the stream is a terminal and the NO_COLOR environment
+     * variable is unset or empty (https://no-color.org).
+     *
+     * @param resource $stream
      */
-    protected static function processTokens(string $text): string {
-        // Check if output is a TTY (terminal)
-        $use_colors = posix_isatty(STDOUT);
+    protected static function useColours($stream): bool {
+        // read the raw value: any non-empty string (even "0" or "false") disables colours
+        $no_color = getenv('NO_COLOR');
 
-        if (!$use_colors) {
-            // Remove all tokens if colors are disabled
-            return (string) preg_replace('/\[[a-z_]+\]/', '', $text);
+        if (is_string($no_color) && $no_color !== '') {
+            return false;
         }
 
-        // Replace tokens with ANSI escape codes
+        return stream_isatty($stream);
+    }
+
+    /**
+     * Replace known formatting tokens with ANSI escape codes, or remove them if colours are disabled.
+     *
+     * Bracketed text that isn't a known token is returned unchanged.
+     */
+    protected static function processTokens(string $text, bool $colours): string {
         return (string) preg_replace_callback(
             '/\[([a-z_]+)\]/',
-            function ($matches) {
+            function (array $matches) use ($colours): string {
                 $token = $matches[1];
-                return isset(static::$tokens[$token]) ? static::$tokens[$token] : $matches[0];
+
+                if (!isset(static::$tokens[$token])) {
+                    return $matches[0];
+                }
+
+                return $colours ? static::$tokens[$token] : '';
             },
             $text,
         );
+    }
+
+    /**
+     * Wrap literal text in a single formatting token.
+     *
+     * The text itself is not searched for tokens, so data such as option keys and
+     * default values is always shown as is.
+     */
+    protected static function style(string $text, string $token, bool $colours): string {
+        if (!$colours) {
+            return $text;
+        }
+
+        return static::$tokens[$token] . $text . static::$tokens['reset'];
     }
 
     /**
@@ -206,7 +246,7 @@ class CLI {
      * @throws RuntimeException If STDIN has reached end of input or cannot be read
      */
     protected static function readLine(): string {
-        $line = fgets(STDIN);
+        $line = fgets(static::$stdin ?? STDIN);
 
         if ($line === false) {
             throw new RuntimeException('Unexpected end of input');
@@ -219,12 +259,16 @@ class CLI {
      * Prompt the user for input.
      */
     public static function prompt(string $prompt, string $default = ''): string {
-        // Add default value to prompt if provided
+        $colours = static::useColours(STDOUT);
+
+        $text = static::processTokens($prompt, $colours);
+
+        // Add default value to prompt if provided - shown literally, not as formatting tokens
         if ($default !== '') {
-            $prompt .= " [[bright_cyan]{$default}[reset]]";
+            $text .= ' [' . static::style($default, 'bright_cyan', $colours) . ']';
         }
 
-        static::print("{$prompt}: ");
+        echo "{$text}: ";
 
         $input = static::readLine();
 
@@ -263,18 +307,19 @@ class CLI {
         // compare as strings - input is always a string but option keys may be integers
         $keys = array_map('strval', array_keys($options));
 
-        // Display options
+        $colours = static::useColours(STDOUT);
+
+        // Display options - keys are shown literally, not as formatting tokens
         foreach ($options as $key => $value) {
-            $marker = ($key === $default) ? '[bright_cyan]' : '';
-            $reset = ($key === $default) ? '[reset]' : '';
-            static::println("  [{$marker}{$key}{$reset}] {$value}");
+            $key_text = ($key === $default) ? static::style("{$key}", 'bright_cyan', $colours) : "{$key}";
+            echo "  [{$key_text}] ", static::processTokens("{$value}", $colours), PHP_EOL;
         }
 
         // Add default to prompt if provided
-        $default_text = $default !== null ? " [[bright_cyan]{$default}[reset]]" : '';
+        $default_text = $default !== null ? ' [' . static::style("{$default}", 'bright_cyan', $colours) . ']' : '';
 
         while (true) {
-            static::print("Enter choice{$default_text}: ");
+            echo "Enter choice{$default_text}: ";
 
             $input = static::readLine();
 

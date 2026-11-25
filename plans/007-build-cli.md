@@ -129,14 +129,14 @@ the exit code.
 
 ## Milestones
 
-### [ ] M1 — Colour detection and known-token-only formatting
+### [x] M1 — Colour detection and known-token-only formatting
 
 - **Approach:** Bug first: add `tests/CLITest.php` with the colours-off `[r]` test and the `select()` key test, see them fail, then fix `processTokens()`. Replace `posix_isatty` with `useColours(STDOUT)` (D1-D3). Add `style()` and use it for select keys/defaults and the prompt default (D5). Add the pty child-process tests for colours on, `NO_COLOR=1` and `NO_COLOR=` (empty). select/prompt tests need STDIN, so add the `$stdin` seam and `tests/CLIHarness.php` here.
 - **Test seam:** `CLI::println()`/`print()` via `expectOutputString`, `CLIHarness::select()`/`prompt()` with a `php://memory` STDIN, and a child PHP process with a pty STDOUT.
 - **Edge cases:** `[Hi]`, `[x_y]`, `[123]` untouched; select key `red` printed literally; `NO_COLOR=0` disables colour.
 - **Deliverable:** formatted output is correct on terminals, pipes and under `NO_COLOR`.
 - **Verify:** `vendor/bin/phpunit tests/CLITest.php` passes (the `[r]` test failed before the fix); `composer check` passes.
-- **Outcome:**
+- **Outcome:** `useColours()`, known-token-only `processTokens()`, `style()` and the `$stdin` seam in src/CLI.php; tests/CLIHarness.php and tests/CLITest.php (9 tests). Before the fix, `testPrintlnLeavesUnknownBracketedTextWithColoursOff` printed `a   [Hi] [123]` and the NO_COLOR `0`/`1`/`false` cases printed ANSI. After: CLITest 9/9 (also 9/9 when phpunit itself runs in a pty via `script -qec`), `composer check` OK (69 tests), no `posix_` in CLI.php. One `composer check` run reported a PHPStan failure with no error listed; an immediate rerun and `composer phpstan` reported no errors (likely worker contention with the parallel builds).
 
 ### [ ] M2 — End of input in prompt, confirm and select
 
