@@ -549,7 +549,7 @@ class Connection {
     /**
      * Gets the last error information from the database.
      *
-     * @return array
+     * @return array<int, mixed> SQLSTATE code, driver error code and driver error message
      */
     public function getLastError(): array {
         return $this->pdo->errorInfo();

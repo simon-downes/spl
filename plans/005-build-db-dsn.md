@@ -1,6 +1,6 @@
 # 005 — DB DSN parsing, SQLite paths, typed binding and facade docblocks
 
-Status: building
+Status: reviewing
 Branch: build-it/005-db-dsn (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/005-db-dsn
 
@@ -192,7 +192,7 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 - **Outcome:** `!==` fix. Before: the stub test got `'3.46.1'` instead of `'3.46.1: Uptime: 42'`;
   after: `phpunit --filter ConnectionTest` OK (28 tests), PHPStan 0 errors, cs-check clean.
 
-### [ ] M5 — DB facade `@method static` docblocks
+### [x] M5 — DB facade `@method static` docblocks
 
 - **Approach:** One `@method static <return> <name>(<params>)` line per forwarded method, types
   copied from `Connection` (array shapes from its `@return` tags where PHPStan accepts them).
@@ -200,7 +200,14 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 - **Test seam:** `ReflectionClass(DB::class)->getDocComment()`, PHPStan.
 - **Deliverable:** IDEs and PHPStan resolve `DB::getAll()` etc.
 - **Verify:** `vendor/bin/phpunit --filter DBTest` passes; PHPStan on the throwaway file reports the documented return types.
-- **Outcome:**
+- **Outcome:** 22 `@method static` tags on `DB` (all public `Connection` instance methods), plus a
+  separate-process facade test via `$_ENV['DB_DSN']`. The drift test failed against the old
+  `DB.php`, passes now. Throwaway PHPStan run on `/tmp/db-dsn-phpstan/check.php` dumped
+  `array<int, array<string, mixed>>` for `getAll`, `string` for `insertId`/`quote`, the `getInfo`
+  shape, and flagged `DB::getRow(123)` (expects `PDOStatement|string`); file removed. PHPStan then
+  flagged the bare `array` on `getLastError` (missingType.iterableValue), so both `DB` and
+  `Connection::getLastError()` now say `array<int, mixed>`. `composer check`: cs clean, PHPStan 0
+  errors, 98 tests OK.
 
 ## Deviations
 
