@@ -55,14 +55,15 @@ Codebase facts:
 |-----|----------|--------|----------|-----|--------|
 | D1  | How parseURL handles encoded characters | `parse_url()` the raw URL, then decode components | urldecode before parsing (today) | Decoding first turns `%2F`/`%23`/`%40` into URL delimiters, so `parse_url()` fails or mis-splits | user |
 | D2  | Which components are decoded, and how | `rawurldecode` on `user`, `pass`, `host`, `path`; `query` decoded once by `parse_str()`; defaults are not decoded | decode only user/pass; `urldecode` | Today every component is decoded, so path/host decoding keeps encoded DB names/SQLite paths (e.g. `%20`) working; `rawurldecode` keeps a literal `+` in a password instead of turning it into a space | self |
-| D3  | Accepted SQLite forms | `sqlite:///abs/path.db` = absolute; `sqlite://<host>/rel/path.db` = relative to `SPL_ROOT` (or cwd if undefined); `:memory:` in either form is never prefixed | keep relative-only | User-chosen; existing `sqlite://localhost/:memory:` tests keep passing | user |
-| D4  | Where the empty-authority form (`scheme:///path`) is handled | In `Str::parseURL()`: rewrite a leading `scheme:///` to `scheme:/` before `parse_url()`, giving `host` = default and an absolute `path` | special-case SQLite in `makeDSN()` before calling parseURL | `parseURL()` is the single URL parser here and `makeDSN()` consumes its parts; RFC 3986 allows an empty authority. Side effect: `x:///foo` parses (host `''`) instead of returning null | self |
-| D5  | How makeDSN tells absolute from relative | Empty host after parsing = absolute; any non-empty host = relative (host otherwise ignored and forced to `localhost`, as today) | accept only `localhost` as the relative marker and reject other hosts | Rejecting other hosts would break existing DSNs with no user ask | self |
+| D3  | Accepted SQLite forms | `sqlite:///abs/path.db` (exactly three slashes) and `sqlite:/abs/path.db` = absolute; `sqlite://<host>/rel/path.db` and `sqlite:rel/path.db` = relative to `SPL_ROOT` (or cwd if undefined); `:memory:` in either form is never prefixed; `sqlite:////abs` is rejected (post-PR review) | keep relative-only; support four slashes as absolute | User-chosen; existing `sqlite://localhost/:memory:` and `sqlite:rel.db` URLs keep working. Four slashes (SQLAlchemy style) stay an error as on master rather than adding a second absolute form | user |
+| D4  | Where the empty-authority form (`scheme:///path`) is handled | In `Str::parseURL()`: rewrite a leading `scheme:///` not followed by a fourth `/` (`:///(?!/)`) to `scheme:/` before `parse_url()`, giving `host` = default and an absolute `path` | special-case SQLite in `makeDSN()` before calling parseURL | `parseURL()` is the single URL parser here and `makeDSN()` consumes its parts; RFC 3986 allows an empty authority. Side effect: `x:///foo` parses (host `''`) instead of returning null; four slashes still return null (post-PR review: unanchored, `sqlite:////var/app.db` became host `var`) | self |
+| D5  | How makeDSN tells absolute from relative | Absolute when there is no host and the parsed path starts with `/`; every other path (no host and no leading `/`, or any host) is relative (host otherwise ignored and forced to `localhost`, as today) | empty host alone = absolute (the PR's first version: broke `sqlite:db/app.db`); accept only `localhost` as the relative marker | Rejecting other hosts would break existing DSNs with no user ask; `sqlite:rel.db` was relative to `SPL_ROOT` on master (user decision, post-PR review) | user |
 | D6  | How `:memory:` is detected | The path with surrounding slashes trimmed equals `:memory:` | match only `sqlite://localhost/:memory:` | `sqlite:///:memory:` would otherwise open a file literally named `/:memory:` | self |
 | D7  | Parameter types in bindParams | `null` → `PARAM_NULL`, `bool` → `PARAM_BOOL`, `int` → `PARAM_INT`, everything else `PARAM_STR` | bools as strings (today) | User-chosen; today `false` binds as `''` | user |
 | D8  | buildURL with parseURL output | Skip components that are `null` or `''`; `rawurlencode` user and (when shown) pass | leave buildURL alone; also encode path/query | parseURL always fills missing parts with `''`, so today `buildURL(parseURL('mysql://h/db'))` gives `mysql://:<password>@h:/db`; now parseURL decodes credentials, buildURL must re-encode them to round-trip. Path encoding needs per-segment handling and no caller needs it | self |
 | D9  | getInfo fix | `!==` comparison | — | User-chosen | user |
 | D10 | Test seam for non-SQLite DSNs and getInfo's server-info branch | Anonymous `Connection` subclasses in the test: one overrides the constructor to expose `makeDSN()`; one replaces `$pdo` with a `PDO` subclass returning a fixed `ATTR_SERVER_INFO` and sets the DSN type to `mysql` | install MariaDB/Postgres in the container | The repo's tests run against SQLite only; a real server can't be assumed | self |
+| D12 | Network drivers (mysql, pgsql, sqlsrv) with an empty host (`mysql:///app`, `mysql:app`) | `makeDSN()` throws `RuntimeException` "No database host specified"; unknown types still get "Unknown database type" | build `host=;` and let the client library decide | Master rejected these ("Invalid database configuration"); the D4 rewrite made them parse. User decision, post-PR review | user |
 | D11 | Guard against DB docblock drift | Reflection test: the `@method static` tags on `DB` list exactly `Connection`'s public non-static methods (minus `__construct`), each with the same parameter names in order | no test | Forwarded methods are added to `Connection` over time; a missing tag fails silently in IDEs/PHPStan | self |
 
 ## Requirements
@@ -82,8 +83,13 @@ Codebase facts:
 - MUST open an absolute SQLite path from `sqlite:///abs/path.db`, unprefixed even when `SPL_ROOT` is defined.
   - AC: ConnectionTest writes a row through `'sqlite://' . $tempfile` (an absolute path, so the URL starts `sqlite:///`), reads it back through a second Connection, and `getDSN()->pdo === 'sqlite:<tempfile>'`.
   - AC: separate-process test with `SPL_ROOT` defined gives the same unprefixed `pdo`.
-- MUST keep `sqlite://localhost/rel/path.db` relative to `SPL_ROOT` when defined.
+- MUST keep `sqlite://localhost/rel/path.db` and `sqlite:rel/path.db` relative to `SPL_ROOT` when defined; `sqlite:/abs/path.db` is absolute.
   - AC: separate-process test defines `SPL_ROOT` as a temp dir; the database file is created at `SPL_ROOT/rel.db`.
+  - AC: separate-process tests: `sqlite:db/app.db` and `sqlite:app.db` give `pdo` `sqlite:SPL_ROOT/...`; `sqlite:/var/data/app.db` gives `sqlite:/var/data/app.db`.
+- MUST reject `sqlite:////abs/path.db` (four slashes): `Str::parseURL()` returns null and `makeDSN()` throws "Invalid database configuration".
+  - AC: StrTest and ConnectionTest cases.
+- MUST reject mysql/pgsql/sqlsrv URLs without a host with `RuntimeException` "No database host specified".
+  - AC: ConnectionTest data provider (`mysql:///app`, `pgsql:///app`, `sqlsrv:///app`, `mysql:app`).
 - MUST never prefix `:memory:`: `sqlite://localhost/:memory:` and `sqlite:///:memory:` give `pdo` `sqlite::memory:` with or without `SPL_ROOT`.
   - AC: separate-process test with `SPL_ROOT` defined (fails before the fix); main-process test for both forms.
 - MUST reject a SQLite URL with no database (`sqlite:///`, `sqlite://localhost/`) with `RuntimeException` "No database name specified".
@@ -130,6 +136,7 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   configuration: …" (unchanged). The message echoes the URL including any password (existing
   behaviour, out of scope; noted in Risks).
 - Empty database name → `RuntimeException` "No database name specified" (unchanged).
+- MySQL/Postgres/SQL Server URL with no host → `RuntimeException` "No database host specified" (D12).
 - SQLite file that can't be opened → `PDOException` from `new PDO()` (unchanged).
 
 ## Milestones
@@ -211,6 +218,8 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 
 ## Deviations
 
+- Post-PR review changed D3/D4/D5 and added D12: host-less relative SQLite paths stay relative to `SPL_ROOT`, four-slash URLs are rejected, and network drivers need a host. See Review → Independent review (post-PR).
+
 ## Risks
 
 - "Invalid database configuration: {$url}" includes the password in the exception message
@@ -242,10 +251,30 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   injection via a decoded `;` in host/db (pre-existing: the old code decoded before parsing, so
   `%3B` already reached the DSN; config is trusted); password echoed in "Invalid database
   configuration" (pre-existing, out of scope, in Risks); `sqlite:////x` parsing as host `x`
-  (unrealistic input). Spec check: every MUST traced to a passing test (StrTest parseURL/buildURL
+  (unrealistic input; reversed by the post-PR review below). Spec check: every MUST traced to a passing test (StrTest parseURL/buildURL
   cases, ConnectionTest DSN/SQLite/binding/getInfo cases, DBTest) plus the throwaway PHPStan run;
   the `Connection::getLastError()` docblock change serves the docblock MUST (PHPStan rejected a
   bare `array` in `@method`).
+- Independent review (post-PR, /tmp/reviews/pr-4.md) and user decisions, all fixed; each new test
+  failed before its fix (8 failures), then `composer check` passed (cs clean, PHPStan 0 errors,
+  107 tests / 238 assertions):
+  - ⚠️ `sqlite:db/app.db` skipped the `SPL_ROOT` prefix (empty host treated as absolute). Fixed:
+    absolute only when there is no host and the path starts with `/` (D5). Tests:
+    `ConnectionTest::testHostlessRelativeSqlitePathIsPrefixedWithRoot` (`sqlite:db/app.db`,
+    `sqlite:app.db`), plus the guard `testHostlessAbsoluteSqlitePathIsNotPrefixedWithRoot`.
+  - ⚠️ `sqlite:////var/app.db` parsed as host `var`. Fixed: the rewrite is anchored to exactly three
+    slashes (`:///(?!/)`), so four slashes fail loudly as on master; supporting four slashes as
+    absolute was considered and not done (no user ask, and one absolute form is enough) (D3, D4).
+    Tests: `StrTest::testParseURLRejectsFourSlashes`, `ConnectionTest::testRejectsFourSlashSqliteURL`.
+  - ❓→ user decision: mysql/pgsql/sqlsrv with an empty host now throw "No database host specified"
+    instead of building `host=;` (D12). Test: `ConnectionTest::testRejectsNetworkURLWithoutHost`.
+  - ℹ️ buildURL docblock now says host and path are emitted decoded, so the round trip only holds
+    when they need no encoding.
+  - ℹ️ makeDSN SQLite comment now states the real rule; the constructor and makeDSN docblocks list
+    the host-less forms and the new host requirement.
+  - ❓→ user decision: the PR's Breaking changes now list that the facade's `@method static` types can
+    make consumers' PHPStan runs report new errors.
+  - Cross-PR: tests/StrTest.php conflicts textually with #8; resolved at merge time, not here.
 - Merge risk: Medium: bool binding changes the SQL sent for every bool parameter on every driver,
   and only SQLite is tested here; limited because bools were mis-bound before (`false` as `''`)
   and the change is a one-line revert.
@@ -254,9 +283,11 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 
 Delivered: `Str::parseURL()` parses before decoding (encoded credentials work) and accepts
 `scheme:///path`; `Str::buildURL()` round-trips parseURL output; SQLite absolute paths,
-unprefixed `:memory:`, and relative-to-`SPL_ROOT` paths; null/bool parameter types; the
+unprefixed `:memory:`, and relative-to-`SPL_ROOT` paths (including `sqlite:rel.db`); rejection of
+four-slash SQLite URLs and host-less network URLs; null/bool parameter types; the
 `getInfo()` server-info fix; `@method static` tags on `DB`. Evidence: `composer check` exits 0
-(cs clean, PHPStan 0 errors, 98 tests / 224 assertions OK, up from 60 tests); each bug-fix test
+(cs clean, PHPStan 0 errors, 107 tests / 238 assertions OK after the post-PR review fixes, up
+from 60 tests); each bug-fix test
 was seen failing first (see milestone Outcomes); throwaway PHPStan run confirmed the facade types.
 Not verified: behaviour against live MySQL, Postgres or SQL Server (only `makeDSN()` strings and
 a stubbed `getInfo()` are tested), including `PARAM_BOOL` on those drivers.
