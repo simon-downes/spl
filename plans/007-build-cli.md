@@ -1,6 +1,6 @@
 # 007 — CLI colours, end of input, exit codes and generated help
 
-Status: planning
+Status: building
 Branch: build-it/007-cli (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/007-cli
 
@@ -48,7 +48,7 @@ Codebase facts:
 |----|----------|--------|----------|-----|--------|
 | D1 | TTY detection | `stream_isatty()` on the stream being written | `posix_isatty()` | Core PHP; ext-posix isn't declared in composer.json | user |
 | D2 | Colour opt-out | Off when `NO_COLOR` is set to a non-empty value | Ignore it | https://no-color.org | user |
-| D3 | How `NO_COLOR` is read | Raw string from `$_ENV['NO_COLOR'] ?? getenv('NO_COLOR')` | `env()` | `env()` converts `false`/`null` strings, but no-color.org says any non-empty value disables colour; `variables_order=GPCS` means real env vars need `getenv()` | self |
+| D3 | How `NO_COLOR` is read | Raw `getenv('NO_COLOR')` | `env()` / `$_ENV` first | `env()` converts `false`/`null` strings, but no-color.org says any non-empty value disables colour; `NO_COLOR` is a user's shell preference, not app config, so .env (`$_ENV`) isn't consulted, which also keeps `putenv()` in tests authoritative | self |
 | D4 | Token handling | Replace (colours on) or strip (colours off) only names in `$tokens`; leave every other `[...]` untouched in both modes | Strip any `[a-z_]+` | Phase 1 bug: `select()` keys like `[r]` vanished when piped | user |
 | D5 | Data inside formatted output (select keys, prompt/select defaults, help command names, unknown command name) | Inserted literally, never token-processed; styled by wrapping in an ANSI code | Interpolate into the markup string | A select key or default named `red` or `bold` is a known token and would otherwise be replaced/stripped; user-typed command names shouldn't change styling | self |
 | D6 | EOF in `prompt()` / `confirm()` | Return the default (`''` when `prompt()` has none) | Throw | User decision | user |
@@ -76,6 +76,7 @@ Codebase facts:
   - AC: colours off, `println('[bold]a[reset] [r] [x_y] [Hi]')` prints `a [r] [x_y] [Hi]`; colours on (pty) it prints `\033[1ma\033[0m [r] [x_y] [Hi]`.
   - AC: colours off, `select('Pick', ['r' => 'Red', 'red' => 'Crimson'], 'r')` lists `  [r] Red` and `  [red] Crimson`.
 - MUST make `prompt()` and `confirm()` return their default on EOF.
+  - AC: colours off, `prompt('Style', 'bold')` at EOF prints `Style [bold]: ` then a newline (default shown literally).
   - AC: empty STDIN: `prompt('Name', 'bob')` returns `'bob'`, `prompt('Name')` returns `''`, `confirm('Ok?', false)` returns `false`, `confirm('Ok?')` returns `true`; each prints the prompt followed by a newline.
 - MUST make `select()` return its non-null default on EOF and otherwise throw; it never loops forever.
   - AC: STDIN `"zz\n"` then EOF with default `'g'` returns `'g'`; with no default throws `RuntimeException` `Unexpected end of input`.
@@ -83,7 +84,7 @@ Codebase facts:
   - AC: child process running `CLI::handle()` exits 3 for a handler returning 3, 0 for one returning null; `dispatch()` returns the same values in-process.
   - AC: a handler returning `'x'` or `256` makes `dispatch()` throw `RuntimeException` naming the command.
 - MUST accept only the `['description' => string, 'handler' => callable]` format and throw a `RuntimeException` naming the bad entry otherwise.
-  - AC: missing `handler`, non-callable `handler`, missing or non-string `description`, a non-array entry, and an integer key each throw with a message containing the command name (or key) and the commands file path; no handler runs.
+  - AC: missing `handler`, non-callable `handler`, missing or non-string `description`, a non-array entry, and an integer key each throw with a message containing the command name (or key) and the commands file path; no handler runs. An entry with an extra key loads and runs.
 - MUST provide a built-in `help` listing all commands, sorted and aligned, run when no command is given; a user `help` entry replaces it.
   - AC: commands `zeta` and `alpha:long` -> output `Available commands:\n  alpha:long  <desc>\n  help        List available commands\n  zeta        <desc>\n` (colours off) for both `[]` args and `['help']`; exit code 0.
   - AC: a user `help` entry runs instead, and with no command given.
@@ -116,7 +117,7 @@ the exit code.
   - `protected static function readLine(): ?string` — `null` on EOF (after printing `PHP_EOL`).
   - `public static function handle(array $argv): never`, `protected static function dispatch(array $argv, string $commands_file): int`, `protected static function loadCommands(string $commands_file): array`, `protected static function printHelp(array $commands): void`.
 - `tests/CLIHarness.php` (new): `final class CLIHarness extends CLI` exposing `setStreams()`, `resetStreams()` and `dispatch()` publicly. Not picked up as a test (no `Test.php` suffix).
-- `tests/CLITest.php` (new): `final class CLITest` following tests/util/EnvTest.php (temp files via `tempnam`, cleanup in tearDown). setUp sets `NO_COLOR=1` with `putenv()` so in-process output is deterministic even when phpunit runs in a terminal; tearDown restores the original value. Child-process tests write a runner script to a temp dir that requires `vendor/autoload.php`, calls `SPL::init($dir, false)` and `CLI::handle($argv)`, and use `proc_open()`; the pty tests capture output with `ob_start()` inside the child and write it to a STDERR pipe (reading a pty directly raises an EIO notice), and skip when the platform has no pty support.
+- `tests/CLITest.php` (new): `final class CLITest` following tests/util/EnvTest.php (temp files via `tempnam`, cleanup in tearDown). setUp sets `NO_COLOR=1` with `putenv()` so in-process output is deterministic even when phpunit runs in a terminal; tearDown restores the original value. Child-process tests write a runner script to a temp dir that requires `vendor/autoload.php`, defines `SPL_ROOT` as that dir and calls `CLI::handle($argv)` (avoiding `SPL::init()`/`SPL::run()`, which the error-handling PR is changing), and use `proc_open()`; the pty tests capture output with `ob_start()` inside the child and write it to a STDERR pipe (reading a pty directly raises an EIO notice), and skip when the platform has no pty support.
 
 ### Error handling
 
@@ -150,7 +151,7 @@ the exit code.
 
 - **Approach:** Split `handle()` into `exit(static::dispatch($argv, SPL_ROOT . '/config/commands.php'))` and `dispatch()` (D10). `loadCommands($file)` validates entries (D12-D14, D18) and returns `array<string, array{description: string, handler: callable}>`; `dispatch()` adds the built-in help unless defined (D15-D16), routes, validates the result (D11) and returns the code. Unknown command via `printError()` with the `$stderr` seam (D17). Docblocks updated for the new format.
 - **Test seam:** `CLIHarness::dispatch()` with temp commands files and memory STDERR; child process running `CLI::handle()` for real exit codes and STDERR.
-- **Edge cases:** options before the command name; `help extra args`; user `help` with no command given.
+- **Edge cases:** options before the command name; `help extra args`; user `help` with no command given; unknown command `[red]` is echoed literally on STDERR.
 - **Deliverable:** a consumer's `config/commands.php` in the new format gets help, exit codes and STDERR errors.
 - **Verify:** `vendor/bin/phpunit tests/CLITest.php` passes; `composer check` passes.
 - **Outcome:**
@@ -163,6 +164,8 @@ the exit code.
 - pty tests are skipped where `proc_open()` lacks pty support (e.g. some macOS builds); the colour-on path is then only covered on Linux.
 
 ## Review
+
+- Plan review: one self-conducted pass (no subagent tool in this session) against PLAN-REVIEW.md. Fixed: ⚠️ D3 `$_ENV ?? getenv` would let an `EGPCS` php.ini snapshot override test `putenv()` (now `getenv()` only); ⚠️ child runner depended on `SPL::init()`, which another PR owns (now defines `SPL_ROOT`); ℹ️ no AC for the literal prompt default (D5) or for ignored extra keys (D14) (added); ℹ️ no edge case for a token-like unknown command name (added to M3). No ❌, so no second pass.
 
 ## Outcome
 
