@@ -10,12 +10,18 @@ use spl\CLI;
 final class CLIHarness extends CLI {
 
     /**
-     * Replace the input stream; call with no arguments to restore STDIN.
+     * Replace the input and error streams; call with no arguments to restore STDIN and STDERR.
      *
      * @param resource|null $stdin
+     * @param resource|null $stderr
      */
-    public static function setStreams($stdin = null): void {
+    public static function setStreams($stdin = null, $stderr = null): void {
         static::$stdin = $stdin;
+        static::$stderr = $stderr;
+    }
+
+    public static function dispatch(array $argv, string $commands_file): int {
+        return parent::dispatch($argv, $commands_file);
     }
 
 }

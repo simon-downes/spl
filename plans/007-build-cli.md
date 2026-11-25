@@ -147,14 +147,14 @@ the exit code.
 - **Verify:** `vendor/bin/phpunit tests/CLITest.php` passes; `composer check` passes.
 - **Outcome:** `readLine()` returns `?string` and prints `PHP_EOL` at EOF; prompt/confirm return defaults; select returns its default or throws. 9 new tests (prompt/confirm EOF providers, partial last line, select default and throw after an invalid choice) errored with `Unexpected end of input` before the change; after: CLITest 18/18, `composer check` OK (78 tests, PHPStan 0 errors, cs clean).
 
-### [ ] M3 — Command format, generated help, exit codes and STDERR errors
+### [x] M3 — Command format, generated help, exit codes and STDERR errors
 
 - **Approach:** Split `handle()` into `exit(static::dispatch($argv, SPL_ROOT . '/config/commands.php'))` and `dispatch()` (D10). `loadCommands($file)` validates entries (D12-D14, D18) and returns `array<string, array{description: string, handler: callable}>`; `dispatch()` adds the built-in help unless defined (D15-D16), routes, validates the result (D11) and returns the code. Unknown command via `printError()` with the `$stderr` seam (D17). Docblocks updated for the new format.
 - **Test seam:** `CLIHarness::dispatch()` with temp commands files and memory STDERR; child process running `CLI::handle()` for real exit codes and STDERR.
 - **Edge cases:** options before the command name; `help extra args`; user `help` with no command given; unknown command `[red]` is echoed literally on STDERR.
 - **Deliverable:** a consumer's `config/commands.php` in the new format gets help, exit codes and STDERR errors.
 - **Verify:** `vendor/bin/phpunit tests/CLITest.php` passes; `composer check` passes.
-- **Outcome:**
+- **Outcome:** `handle(): never` wraps `dispatch()`; `loadCommands($file)` validates; built-in help via a closure capturing `$commands` by reference; `printHelp()`, `printError()` and the `$stderr` seam. 24 new tests (help with/without command and extra args, user help, options/args passing, null -> 0, invalid exit codes, unknown command on STDERR with a token-like name, six invalid entries with no handler output, missing/non-array file, and four `CLI::handle()` child-process cases for exit codes 3/0/0/1 with exact STDOUT/STDERR). CLITest 42/42 (also in a pty), `composer check` OK (102 tests, PHPStan 0 errors, cs clean). Manual run through `SPL::run()` in a temp app: help listing exit 0, handler code 4 exits 4, `prompt()` with `</dev/null` returns its default and exits 0, unknown command exits 1 with the message on STDERR, a terminal gets green names, and a bare-callable entry exits 1 with the validation message logged to STDERR by `SPL::error()`. Confirmed PHPUnit still checks `expectOutputString` when an expected exception is thrown, so the no-handler-runs assertion is real.
 
 ## Deviations
 

@@ -43,6 +43,13 @@ class CLI {
     protected static $stdin = null;
 
     /**
+     * Stream to write error messages to; null means STDERR.
+     *
+     * @var resource|null
+     */
+    protected static $stderr = null;
+
+    /**
      * Formatting tokens and their corresponding ANSI escape codes.
      *
      * @var array<string, string>
@@ -358,55 +365,157 @@ class CLI {
     }
 
     /**
-     * Handle command line arguments and execute the appropriate command.
+     * Handle command line arguments, run the matching command and exit with its exit code.
+     *
+     * Commands are loaded from config/commands.php under SPL_ROOT, which must return an array
+     * of command names mapped to arrays with a `description` (string) and a `handler`
+     * (callable receiving the parsed options and the remaining positional arguments, and
+     * returning an exit code from 0 to 255, or null for 0):
+     *
+     * ```php
+     * 'users:list' => [
+     *     'description' => 'List all users',
+     *     'handler'     => fn(array $options, array $args): ?int => ...,
+     * ],
+     * ```
+     *
+     * A built-in `help` command lists the commands with their descriptions and runs when no
+     * command is given; a `help` entry in the commands file replaces it. An unknown command
+     * writes an error to STDERR and exits with 1.
      *
      * @param array<int, string> $argv Command line arguments (typically $argv)
+     *
+     * @throws RuntimeException If the commands file is missing or invalid, or a handler returns an invalid exit code
      */
-    public static function handle(array $argv): void {
-        // Parse arguments
+    public static function handle(array $argv): never {
+        exit(static::dispatch($argv, SPL_ROOT . '/config/commands.php'));
+    }
+
+    /**
+     * Run the command named by the first positional argument and return its exit code.
+     *
+     * @param array<int, string> $argv Command line arguments (typically $argv)
+     *
+     * @throws RuntimeException If the commands file is missing or invalid, or the handler returns an invalid exit code
+     */
+    protected static function dispatch(array $argv, string $commands_file): int {
         static::parseArgs($argv);
 
+        $commands = static::loadCommands($commands_file);
+
+        // built-in help unless the commands file defines its own
+        // $commands is captured by reference so the list includes help itself
+        $commands['help'] ??= [
+            'description' => 'List available commands',
+            'handler'     => function () use (&$commands): ?int {
+                static::printHelp($commands);
+                return null;
+            },
+        ];
+
         // Get command name (first positional argument)
-        $command_name = static::$args[0] ?? 'help';
+        $name = static::$args[0] ?? 'help';
 
-        // Load commands from config file
-        $commands = static::loadCommands();
-
-        // Check if command exists
-        if (!isset($commands[$command_name])) {
-            static::println("[red]Error: Unknown command '{$command_name}'[reset]");
-            static::println("Run with 'help' to see available commands.");
-            exit(1);
+        if (!isset($commands[$name])) {
+            static::printError("Error: Unknown command '{$name}'");
+            static::printError("Run 'help' to see available commands.");
+            return 1;
         }
-
-        // Get command callable
-        $callable = $commands[$command_name];
 
         // Remove command name from arguments
         array_shift(static::$args);
 
-        // Execute command
-        call_user_func($callable, static::$options, static::$args);
+        $code = ($commands[$name]['handler'])(static::$options, static::$args);
+
+        if ($code === null) {
+            return 0;
+        }
+
+        // exit() only reports the low 8 bits, so 256 would exit with 0 (success)
+        if (!is_int($code) || $code < 0 || $code > 255) {
+            $got = is_int($code) ? (string) $code : get_debug_type($code);
+            throw new RuntimeException("Command '{$name}' must return null or an exit code from 0 to 255, got {$got}");
+        }
+
+        return $code;
     }
 
     /**
-     * Load commands from config/commands.php file.
+     * Load and validate the commands defined in a commands file.
      *
-     * @return array<string, callable> Array of command names and their callables
+     * @return array<string, array{description: string, handler: callable}> Command names and their definitions
+     *
+     * @throws RuntimeException If the file is missing, doesn't return an array, or contains an invalid entry
      */
-    protected static function loadCommands(): array {
-        $commands_file = SPL_ROOT . '/config/commands.php';
-
+    protected static function loadCommands(string $commands_file): array {
         if (!file_exists($commands_file)) {
             throw new RuntimeException("Commands file not found: {$commands_file}");
         }
 
-        $commands = require $commands_file;
+        $entries = require $commands_file;
 
-        if (!is_array($commands)) {
-            throw new RuntimeException("Commands file must return an array");
+        if (!is_array($entries)) {
+            throw new RuntimeException("Commands file must return an array: {$commands_file}");
+        }
+
+        $commands = [];
+
+        foreach ($entries as $name => $entry) {
+            $invalid = fn(string $problem) => new RuntimeException("Invalid command '{$name}' in {$commands_file}: {$problem}");
+
+            if (!is_string($name) || $name === '') {
+                throw $invalid('name must be a non-empty string');
+            }
+
+            if (!is_array($entry)) {
+                throw $invalid("entry must be an array with 'description' and 'handler' keys");
+            }
+
+            if (!isset($entry['handler']) || !is_callable($entry['handler'])) {
+                throw $invalid("'handler' must be callable");
+            }
+
+            if (!isset($entry['description']) || !is_string($entry['description'])) {
+                throw $invalid("'description' must be a string");
+            }
+
+            $commands[$name] = [
+                'description' => $entry['description'],
+                'handler'     => $entry['handler'],
+            ];
         }
 
         return $commands;
+    }
+
+    /**
+     * Print the commands, sorted by name, with their descriptions aligned.
+     *
+     * @param array<string, array{description: string, handler: callable}> $commands
+     */
+    protected static function printHelp(array $commands): void {
+        ksort($commands, SORT_STRING);
+
+        $width = max([0, ...array_map('strlen', array_keys($commands))]);
+        $colours = static::useColours(STDOUT);
+
+        static::println('Available commands:');
+
+        foreach ($commands as $name => $command) {
+            // names are shown literally; descriptions may contain formatting tokens
+            $label = static::style(str_pad($name, $width), 'green', $colours);
+            echo "  {$label}  ", static::processTokens($command['description'], $colours), PHP_EOL;
+        }
+    }
+
+    /**
+     * Write a line to STDERR, in red if STDERR is a terminal.
+     *
+     * The message is written literally; it is not searched for formatting tokens.
+     */
+    protected static function printError(string $message): void {
+        $stream = static::$stderr ?? STDERR;
+
+        fwrite($stream, static::style($message, 'red', static::useColours($stream)) . PHP_EOL);
     }
 }

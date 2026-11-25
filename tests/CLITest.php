@@ -12,6 +12,13 @@ final class CLITest extends TestCase {
 
     private string|false $no_color;
 
+    /**
+     * Temp files and directories to remove, in creation order.
+     *
+     * @var array<int, string>
+     */
+    private array $paths = [];
+
     protected function setUp(): void {
         // force colours off so in-process output doesn't depend on whether phpunit runs in a terminal
         $this->no_color = getenv('NO_COLOR');
@@ -21,6 +28,10 @@ final class CLITest extends TestCase {
     protected function tearDown(): void {
         putenv($this->no_color === false ? 'NO_COLOR' : "NO_COLOR={$this->no_color}");
         CLIHarness::setStreams();
+
+        foreach (array_reverse($this->paths) as $path) {
+            is_dir($path) ? rmdir($path) : unlink($path);
+        }
     }
 
     /**
@@ -33,6 +44,75 @@ final class CLITest extends TestCase {
         rewind($stream);
 
         return $stream;
+    }
+
+    /**
+     * Write a commands file that returns the given PHP array body.
+     */
+    private function commandsFile(string $body, string $directory = ''): string {
+        if ($directory === '') {
+            $file = tempnam(sys_get_temp_dir(), 'spl-cli-');
+            $this->assertIsString($file);
+        }
+        else {
+            $file = "{$directory}/commands.php";
+        }
+
+        $this->paths[] = $file;
+        file_put_contents($file, "<?php return [\n{$body}\n];\n");
+
+        return $file;
+    }
+
+    /**
+     * Run the commands in a commands file and return the exit code and what was written to STDERR.
+     *
+     * @param array<int, string> $argv
+     * @return array{int, string}
+     */
+    private function dispatch(string $file, array $argv): array {
+        $stderr = $this->stream();
+        CLIHarness::setStreams(null, $stderr);
+
+        $code = CLIHarness::dispatch($argv, $file);
+
+        rewind($stderr);
+
+        return [$code, (string) stream_get_contents($stderr)];
+    }
+
+    /**
+     * Run CLI::handle() in a child process for an app whose commands file has the given body.
+     *
+     * @param array<int, string> $args
+     * @return array{int, string, string} Exit code, STDOUT and STDERR
+     */
+    private function runHandle(string $body, array $args): array {
+        $root = tempnam(sys_get_temp_dir(), 'spl-cli-');
+        $this->assertIsString($root);
+        unlink($root);
+        mkdir("{$root}/config", 0o700, true);
+        array_push($this->paths, $root, "{$root}/config");
+
+        $this->commandsFile($body, "{$root}/config");
+
+        $script = "{$root}/cli.php";
+        $this->paths[] = $script;
+        file_put_contents($script, sprintf(
+            "<?php\nrequire %s;\ndefine('SPL_ROOT', %s);\nspl\\CLI::handle(\$argv);\n",
+            var_export(dirname(__DIR__) . '/vendor/autoload.php', true),
+            var_export($root, true),
+        ));
+
+        $process = proc_open([PHP_BINARY, $script, ...$args], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['NO_COLOR' => '1'] + getenv());
+        $this->assertIsResource($process);
+        fclose($pipes[0]);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        return [proc_close($process), $stdout, $stderr];
     }
 
     /**
@@ -170,6 +250,164 @@ final class CLITest extends TestCase {
             . "Enter choice: \n",
             $output,
         );
+    }
+
+    public static function helpArgsProvider(): array {
+        return [
+            'no command'   => [['cli']],
+            'help'         => [['cli', 'help']],
+            'help extra'   => [['cli', '-v', 'help', 'zeta']],
+        ];
+    }
+
+    /**
+     * @param array<int, string> $argv
+     */
+    #[DataProvider('helpArgsProvider')]
+    public function testBuiltInHelpListsCommandsSortedAndAligned(array $argv): void {
+        $file = $this->commandsFile(<<<'PHP'
+            'zeta' => ['description' => 'Last one', 'handler' => fn(array $options, array $args): ?int => 5],
+            'alpha:long' => ['description' => 'First [bold]one[reset]', 'handler' => fn(array $options, array $args): ?int => 5],
+            PHP);
+        $this->expectOutputString(
+            "Available commands:\n"
+            . "  alpha:long  First one\n"
+            . "  help        List available commands\n"
+            . "  zeta        Last one\n",
+        );
+
+        $this->assertSame([0, ''], $this->dispatch($file, $argv));
+    }
+
+    public static function userHelpArgsProvider(): array {
+        return [
+            'no command' => [['cli']],
+            'help'       => [['cli', 'help']],
+        ];
+    }
+
+    /**
+     * @param array<int, string> $argv
+     */
+    #[DataProvider('userHelpArgsProvider')]
+    public function testUserDefinedHelpReplacesBuiltIn(array $argv): void {
+        $file = $this->commandsFile(<<<'PHP'
+            'help' => ['description' => 'Mine', 'handler' => function (array $options, array $args): ?int { echo 'custom help'; return 7; }],
+            PHP);
+        $this->expectOutputString('custom help');
+
+        $this->assertSame([7, ''], $this->dispatch($file, $argv));
+    }
+
+    public function testDispatchPassesOptionsAndRemainingArgumentsAndReturnsExitCode(): void {
+        $file = $this->commandsFile(<<<'PHP'
+            'run' => ['description' => 'Run', 'handler' => function (array $options, array $args): ?int { echo json_encode([$options, $args]); return 3; }],
+            PHP);
+        $this->expectOutputString('[{"v":true,"x":"1"},["a","b"]]');
+
+        $this->assertSame([3, ''], $this->dispatch($file, ['cli', '-v', 'run', 'a', '--x=1', 'b']));
+    }
+
+    public function testNullExitCodeBecomesZero(): void {
+        $file = $this->commandsFile(<<<'PHP'
+            'quiet' => ['description' => 'Quiet', 'handler' => fn(array $options, array $args): ?int => null, 'aliases' => ['q']],
+            PHP);
+
+        $this->assertSame([0, ''], $this->dispatch($file, ['cli', 'quiet']));
+    }
+
+    public static function invalidExitCodeProvider(): array {
+        return [
+            'string'   => ["'x'", 'got string'],
+            'too big'  => ['256', 'got 256'],
+            'negative' => ['-1', 'got -1'],
+            'bool'     => ['true', 'got bool'],
+        ];
+    }
+
+    #[DataProvider('invalidExitCodeProvider')]
+    public function testInvalidExitCodeThrows(string $value, string $got): void {
+        $file = $this->commandsFile("'bad' => ['description' => 'Bad', 'handler' => fn() => {$value}],");
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("Command 'bad' must return null or an exit code from 0 to 255, {$got}");
+
+        $this->dispatch($file, ['cli', 'bad']);
+    }
+
+    public function testUnknownCommandWritesToStderr(): void {
+        $file = $this->commandsFile("'ok' => ['description' => 'Ok', 'handler' => fn() => null],");
+        $this->expectOutputString('');
+
+        $this->assertSame(
+            [1, "Error: Unknown command '[red]'\nRun 'help' to see available commands.\n"],
+            $this->dispatch($file, ['cli', '[red]']),
+        );
+    }
+
+    public static function invalidEntryProvider(): array {
+        return [
+            'missing handler'      => ["'bad' => ['description' => 'Bad'],", "Invalid command 'bad'", "'handler' must be callable"],
+            'uncallable handler'   => ["'bad' => ['description' => 'Bad', 'handler' => 'spl_no_such_function'],", "Invalid command 'bad'", "'handler' must be callable"],
+            'missing description'  => ["'bad' => ['handler' => fn() => null],", "Invalid command 'bad'", "'description' must be a string"],
+            'integer description'  => ["'bad' => ['description' => 5, 'handler' => fn() => null],", "Invalid command 'bad'", "'description' must be a string"],
+            'bare callable'        => ["'bad' => fn() => null,", "Invalid command 'bad'", "entry must be an array with 'description' and 'handler' keys"],
+            'integer key'          => ["['description' => 'Bad', 'handler' => fn() => null],", "Invalid command '0'", 'name must be a non-empty string'],
+        ];
+    }
+
+    #[DataProvider('invalidEntryProvider')]
+    public function testInvalidEntryThrowsBeforeAnyCommandRuns(string $entry, string $command, string $problem): void {
+        $file = $this->commandsFile("'ok' => ['description' => 'Ok', 'handler' => function () { echo 'ran'; }],\n{$entry}");
+        $this->expectOutputString('');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("{$command} in {$file}: {$problem}");
+
+        $this->dispatch($file, ['cli', 'ok']);
+    }
+
+    public function testMissingCommandsFileThrows(): void {
+        $file = sys_get_temp_dir() . '/spl-cli-missing-' . bin2hex(random_bytes(4)) . '.php';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("Commands file not found: {$file}");
+
+        $this->dispatch($file, ['cli']);
+    }
+
+    public function testCommandsFileMustReturnArray(): void {
+        $file = tempnam(sys_get_temp_dir(), 'spl-cli-');
+        $this->assertIsString($file);
+        $this->paths[] = $file;
+        file_put_contents($file, "<?php return 'nope';\n");
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("Commands file must return an array: {$file}");
+
+        $this->dispatch($file, ['cli']);
+    }
+
+    public static function handleProvider(): array {
+        return [
+            'exit code' => [['three'], 3, 'three ran', ''],
+            'null'      => [['none'], 0, '', ''],
+            'help'      => [[], 0, "Available commands:\n  help   List available commands\n  none   None\n  three  Three\n", ''],
+            'unknown'   => [['nope'], 1, '', "Error: Unknown command 'nope'\nRun 'help' to see available commands.\n"],
+        ];
+    }
+
+    /**
+     * @param array<int, string> $args
+     */
+    #[DataProvider('handleProvider')]
+    public function testHandleExitsWithCommandExitCode(array $args, int $code, string $stdout, string $stderr): void {
+        $result = $this->runHandle(<<<'PHP'
+            'three' => ['description' => 'Three', 'handler' => function (array $options, array $args): ?int { echo 'three ran'; return 3; }],
+            'none' => ['description' => 'None', 'handler' => fn(array $options, array $args): ?int => null],
+            PHP, $args);
+
+        $this->assertSame([$code, $stdout, $stderr], $result);
     }
 
     public function testTerminalOutputReplacesOnlyKnownTokens(): void {
