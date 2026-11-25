@@ -261,7 +261,10 @@ was seen failing first (see milestone Outcomes); throwaway PHPStan run confirmed
 Not verified: behaviour against live MySQL, Postgres or SQL Server (only `makeDSN()` strings and
 a stubbed `getInfo()` are tested), including `PARAM_BOOL` on those drivers.
 
-PR: pending
+PR: https://github.com/simon-downes/spl/pull/4
 CI: pending
 
 ## Follow-ups
+
+- Mask the password in Connection's "Invalid database configuration: {$url}" exception message.
+- Test bool binding against live MySQL/Postgres.
