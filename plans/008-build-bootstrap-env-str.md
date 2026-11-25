@@ -62,6 +62,7 @@ parseURL/buildURL). Tests must not call `SPL::init()` in the main process. No do
 | D10 | How does `getString()` detect ASCII? | `mb_check_encoding($str, 'ASCII')` first → no label; otherwise `mb_detect_encoding()` over UTF-8, Windows-1252, ISO-8859-1 (strict); `false` → `unknown` | reorder the candidate list | an explicit check doesn't depend on mbstring's candidate scoring (PHP 8.1+ scores candidates rather than taking the first match) | self |
 | D11 | Test seam for `SPL_CLI` | spawn `PHP_BINARY` with `proc_open()` (array command, no shell) running code that closes STDIN, requires `vendor/autoload.php` and prints `var_export(SPL_CLI, true)` | new public helper as a seam; `#[RunInSeparateProcess]` | the bootstrap runs at autoload, before test code, so only a fresh process can close STDIN first; a helper would add public API just for tests | self |
 | D12 | Where does the Twig test live? | new `tests/SPLRenderTest.php`, `#[RunInSeparateProcess]` | `tests/SPLTest.php` | the error-handling lane is likely to create `tests/SPLTest.php`; a separate file avoids a merge conflict | self |
+| D14 | Quoted `"true"`/`"false"`/`"null"` in env files | converted by `get()` like unquoted ones (found during M1) | keep them as strings by tracking quotedness | `$_ENV` holds plain strings, so quotedness can't survive load-time unquoting without a side table; matches Laravel/phpdotenv `env()` behaviour | self |
 | D13 | How is `xssClean()` removed? | deleted outright, no shim | deprecate first | user decided removal; pre-1.0 personal library; listed under Breaking changes | user |
 
 ## Requirements
@@ -121,14 +122,14 @@ comment per D6 and trim) → interpolate unless single-quoted.
 
 ## Milestones
 
-### [ ] M1 — Env file parser handles export, comments, quotes and bad lines
+### [x] M1 — Env file parser handles export, comments, quotes and bad lines
 
 - **Approach:** Write failing EnvTest cases first (one temp file per test via a small `writeEnv(array $lines)` helper over `$this->file`). Then rewrite the loop in `Env::safeLoad()` and `Env::parseValue()` per Design; drop the quote regex from `Env::get()`. ⚠️ strip comments before interpolation so an interpolated value containing ` #` isn't truncated. ⚠️ FILE_IGNORE_NEW_LINES leaves `\r` on CRLF lines; trimming covers it.
 - **Test seam:** `Env::load()` / `Env::get()` / `$_ENV`.
 - **Edge cases:** `FOO=` → `''`; `FOO= # note` → `''`; `export FOO` (no `=`) → skipped; `=bar` → skipped; `FOO="a"b` → `"a"b`; `FOO=""` → `''`.
 - **Deliverable:** env files with the new syntax load as the Requirements state.
 - **Verify:** `vendor/bin/phpunit tests/util/EnvTest.php` passes (new cases fail on master first), then `composer check` passes.
-- **Outcome:**
+- **Outcome:** Added 9 EnvTest cases; before the fix 6 failed and 1 errored ("Undefined array key 1" at Env.php:123); CRLF passed already. `safeLoad()` now trims, skips blank/comment/no-`=`/empty-key lines and strips `export `; `parseValue()` handles quotes (D7) and inline comments (D6) and delegates `${VAR}` to a new protected `interpolate()` (skipped for single quotes); `get()` no longer strips quotes. `vendor/bin/phpunit tests/util/EnvTest.php`: OK (15 tests, 54 assertions); `composer check`: cs clean, PHPStan 0 errors, OK (68 tests). Deviation: see D14.
 
 ### [ ] M2 — SPL_CLI from PHP_SAPI and Twig reads twig.template_path
 
@@ -147,6 +148,8 @@ comment per D6 and trim) → interpolate unless single-quoted.
 - **Outcome:**
 
 ## Deviations
+
+- M1: quoted `"true"`, `"false"` and `"null"` values in env files are now converted to bool/null by `Env::get()` (before, the quotes blocked conversion). Consequence of load-time unquoting (D3); recorded as D14 and as a breaking change.
 
 ## Risks
 

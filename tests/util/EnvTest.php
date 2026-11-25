@@ -87,4 +87,118 @@ final class EnvTest extends TestCase {
         $this->assertNull(Env::get('SPL_TEST_STRING'));
     }
 
+    public function testLoadAcceptsExportPrefix(): void {
+        $this->writeEnv([
+            'export SPL_TEST_EXPORTED=yes',
+            'export  SPL_TEST_EXPORTED_SPACED = also',
+        ]);
+
+        Env::load($this->file);
+
+        $this->assertSame('yes', Env::get('SPL_TEST_EXPORTED'));
+        $this->assertSame('also', Env::get('SPL_TEST_EXPORTED_SPACED'));
+    }
+
+    public function testLoadStripsInlineCommentsFromUnquotedValues(): void {
+        $this->writeEnv([
+            'SPL_TEST_COMMENTED=bar # a comment',
+            'SPL_TEST_TABBED=bar	# a comment',
+            'SPL_TEST_COLOUR=#fff',
+            'SPL_TEST_URL=http://host/path#frag',
+            'SPL_TEST_ONLY_COMMENT= # nothing yet',
+            'SPL_TEST_EMPTY=',
+        ]);
+
+        Env::load($this->file);
+
+        $this->assertSame('bar', Env::get('SPL_TEST_COMMENTED'));
+        $this->assertSame('bar', Env::get('SPL_TEST_TABBED'));
+        $this->assertSame('#fff', Env::get('SPL_TEST_COLOUR'));
+        $this->assertSame('http://host/path#frag', Env::get('SPL_TEST_URL'));
+        $this->assertSame('', Env::get('SPL_TEST_ONLY_COMMENT'));
+        $this->assertSame('', Env::get('SPL_TEST_EMPTY'));
+    }
+
+    public function testLoadKeepsHashInsideQuotedValues(): void {
+        $this->writeEnv([
+            'SPL_TEST_DQ="x # y" # trailing comment',
+            "SPL_TEST_SQ='x # y'",
+        ]);
+
+        Env::load($this->file);
+
+        $this->assertSame('x # y', Env::get('SPL_TEST_DQ'));
+        $this->assertSame('x # y', Env::get('SPL_TEST_SQ'));
+    }
+
+    public function testLoadStripsQuotesBeforeStoringAndInterpolating(): void {
+        $this->writeEnv([
+            'SPL_TEST_Q="quoted value"',
+            'SPL_TEST_R=${SPL_TEST_Q}!',
+            "SPL_TEST_INNER='\"kept\"'",
+            'SPL_TEST_EMPTY_QUOTES=""',
+            'SPL_TEST_UNTERMINATED="unterminated',
+            'SPL_TEST_TRAILING="a"b',
+        ]);
+
+        Env::load($this->file);
+
+        $this->assertSame('quoted value', $_ENV['SPL_TEST_Q']);
+        $this->assertSame('quoted value!', Env::get('SPL_TEST_R'));
+        $this->assertSame('"kept"', Env::get('SPL_TEST_INNER'));
+        $this->assertSame('', Env::get('SPL_TEST_EMPTY_QUOTES'));
+        $this->assertSame('"unterminated', Env::get('SPL_TEST_UNTERMINATED'));
+        $this->assertSame('"a"b', Env::get('SPL_TEST_TRAILING'));
+    }
+
+    public function testLoadInterpolatesOnlyOutsideSingleQuotes(): void {
+        $this->writeEnv([
+            'SPL_TEST_STRING=hello',
+            "SPL_TEST_SINGLE='\${SPL_TEST_STRING}'",
+            'SPL_TEST_DOUBLE="${SPL_TEST_STRING} there"',
+        ]);
+
+        Env::load($this->file);
+
+        $this->assertSame('${SPL_TEST_STRING}', Env::get('SPL_TEST_SINGLE'));
+        $this->assertSame('hello there', Env::get('SPL_TEST_DOUBLE'));
+    }
+
+    public function testLoadSkipsLinesWithoutAssignment(): void {
+        $this->writeEnv([
+            'NOT_AN_ASSIGNMENT',
+            'export SPL_TEST_NO_VALUE',
+            '=orphan',
+            'SPL_TEST_AFTER=loaded',
+        ]);
+
+        Env::load($this->file);
+
+        $this->assertSame('loaded', Env::get('SPL_TEST_AFTER'));
+        $this->assertArrayNotHasKey('NOT_AN_ASSIGNMENT', $_ENV);
+        $this->assertArrayNotHasKey('', $_ENV);
+    }
+
+    public function testLoadHandlesWindowsLineEndings(): void {
+        file_put_contents($this->file, "SPL_TEST_CRLF=\"value\"\r\nSPL_TEST_CRLF_PLAIN=plain\r\n");
+
+        Env::load($this->file);
+
+        $this->assertSame('value', Env::get('SPL_TEST_CRLF'));
+        $this->assertSame('plain', Env::get('SPL_TEST_CRLF_PLAIN'));
+    }
+
+    public function testGetReturnsEnvironmentValuesVerbatim(): void {
+        $_ENV['SPL_TEST_RAW'] = '"kept"';
+
+        $this->assertSame('"kept"', Env::get('SPL_TEST_RAW'));
+    }
+
+    /**
+     * @param list<string> $lines
+     */
+    private function writeEnv(array $lines): void {
+        file_put_contents($this->file, implode("\n", $lines) . "\n");
+    }
+
 }
