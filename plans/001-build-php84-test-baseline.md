@@ -147,7 +147,7 @@ test class per covered `src/` class, mirrored under `tests/`.
 
 ## Milestones
 
-### [x] M1 — Stable PHP 8.4 tooling with a running PHPUnit suite
+### [x] M1 — require PHP 8.4 with stable tooling and a running PHPUnit suite
 
 - **Approach:** Edit `composer.json` per D1–D4, D11, D15 (`require-dev` adds `phpunit/phpunit
   ^12`; `autoload-dev`; scripts `test`, `check`). Run `composer update`, then tighten the
@@ -167,7 +167,7 @@ test class per covered `src/` class, mirrored under `tests/`.
   3 errors the dev build did not (Str.php:283, Connection.php:285, 313); moved to M2 (see
   Deviations).
 
-### [ ] M2 — Deprecation and PHPStan fixes
+### [x] M2 — remove PHP deprecations and clear PHPStan errors
 
 - **Approach:** First add `tests/util/DebugTest.php` (format `ErrorException` with
   `E_WARNING` → contains `WARNING`; `toString(42)` → `int(42)`; object with a private property
@@ -180,7 +180,17 @@ test class per covered `src/` class, mirrored under `tests/`.
 - **Verify:** `vendor/bin/phpstan analyse --no-progress --memory-limit=1G` → `[OK] No errors`;
   `grep -rnE 'E_STRICT|curl_close|setAccessible|is_integer' src` empty; `composer test` OK;
   the three CLI one-off commands in the Requirements behave as stated.
-- **Outcome:**
+- **Outcome:** `DebugTest::testFormatsErrorExceptionWithSeverity` failed first with
+  "Constant E_STRICT is deprecated" (Debug.php:212) under `failOnDeprecation`; passes after the fix.
+  Debug string assertions tolerate the `; UTF-8` suffix `getString()` adds to ASCII strings
+  (existing quirk, Follow-up). Edits: Debug.php (`is_int`, no `E_STRICT`, no `setAccessible`),
+  Http.php (no `curl_close`), CLI.php (`(string)` casts, `readLine()`, string-key strict
+  `in_array`), Connection.php (`final protected PDO $pdo`, no dead `fetchAll() === false`
+  checks), Str.php (`(int)` on `$pow`). PHPStan: `[OK] No errors`; grep for the four deprecated
+  names: no matches; `composer test`: OK (11 tests, 28 assertions); cs-check: 0 of 21 files.
+  CLI one-offs: `select` with `2` → `2`, with `r` on `['r'=>..]` → `r`; `prompt` `x` → `x`, empty →
+  default; `prompt`/`select` on `/dev/null` → exit 255 `Unexpected end of input` (was a
+  `TypeError`, also 255).
 
 ### [ ] M3 — Remaining minimal happy-path tests
 
@@ -232,5 +242,10 @@ PR: pending
 CI: pending
 
 ## Follow-ups
+
+- `Debug::getString()` lists `UTF-8` before `ASCII` in `mb_detect_encoding()`, so the ASCII branch
+  never runs and every string shows `; UTF-8`.
+- `CLI::select()` prints option keys as `[key]`, which `processTokens()` strips when the key looks
+  like a token (`[r]` → empty), so letter keys are invisible in the menu.
 
 - Release notes / version tag for the PHP `^8.4` floor (docs PR).

@@ -186,11 +186,11 @@ class CLI {
 
         if (!$use_colors) {
             // Remove all tokens if colors are disabled
-            return preg_replace('/\[[a-z_]+\]/', '', $text);
+            return (string) preg_replace('/\[[a-z_]+\]/', '', $text);
         }
 
         // Replace tokens with ANSI escape codes
-        return preg_replace_callback(
+        return (string) preg_replace_callback(
             '/\[([a-z_]+)\]/',
             function ($matches) {
                 $token = $matches[1];
@@ -198,6 +198,21 @@ class CLI {
             },
             $text,
         );
+    }
+
+    /**
+     * Read a line from STDIN with surrounding whitespace removed.
+     *
+     * @throws RuntimeException If STDIN has reached end of input or cannot be read
+     */
+    protected static function readLine(): string {
+        $line = fgets(STDIN);
+
+        if ($line === false) {
+            throw new RuntimeException('Unexpected end of input');
+        }
+
+        return trim($line);
     }
 
     /**
@@ -211,7 +226,7 @@ class CLI {
 
         static::print("{$prompt}: ");
 
-        $input = trim(fgets(STDIN));
+        $input = static::readLine();
 
         // Return default if input is empty
         if ($input === '') {
@@ -245,7 +260,8 @@ class CLI {
     public static function select(string $prompt, array $options, mixed $default = null): mixed {
         static::println($prompt);
 
-        $keys = array_keys($options);
+        // compare as strings - input is always a string but option keys may be integers
+        $keys = array_map('strval', array_keys($options));
 
         // Display options
         foreach ($options as $key => $value) {
@@ -260,7 +276,7 @@ class CLI {
         while (true) {
             static::print("Enter choice{$default_text}: ");
 
-            $input = trim(fgets(STDIN));
+            $input = static::readLine();
 
             // Return default if input is empty and default is provided
             if ($input === '' && $default !== null) {
@@ -268,7 +284,7 @@ class CLI {
             }
 
             // Check if input is a valid option
-            if (in_array($input, $keys)) {
+            if (in_array($input, $keys, true)) {
                 return $input;
             }
 

@@ -97,8 +97,6 @@ class Http {
             throw new RuntimeException("Curl Error: {$error}");
         }
 
-        curl_close($ch);
-
         // split the response into header and body strings
         list($headers, $body) = explode("\r\n\r\n", $response, 2);
 
