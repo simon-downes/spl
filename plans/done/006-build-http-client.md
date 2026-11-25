@@ -260,7 +260,7 @@ files, phpstan `[OK] No errors`, 107 tests OK; bug-first failures recorded in M1
 Not verified: the connect timeout firing (needs a blackholed address) and the 30 s default
 total timeout elapsing (verified by reading `request()` only).
 
-PR: pending
+PR: https://github.com/simon-downes/spl/pull/6
 CI: pending
 
 ## Follow-ups
