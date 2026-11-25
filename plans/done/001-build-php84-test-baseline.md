@@ -1,6 +1,6 @@
 # 001 — PHP 8.4 floor, stable tooling and a minimal PHPUnit baseline
 
-Status: reviewing
+Status: done
 Branch: build-it/001-php84-test-baseline (base: master @ 98cb6cf)
 Worktree: /workspace/.git/build-it-worktrees/001-php84-test-baseline
 
@@ -238,15 +238,53 @@ test class per covered `src/` class, mirrored under `tests/`.
   AC grepped descriptions → JSON versions; ℹ️ PHP-floor release note had no follow-up → added.
   Verified codebase claims: Debug.php:57/212/328, Http.php:100, Connection.php:41/145/171,
   Str.php `(string) preg_replace` pattern, phpstan.neon paths/baseline settings.
-- Code review:
-- Merge risk:
+- Code review: 1 round, self-conducted (no subagent tool in this session) against
+  CODE-REVIEW.md, roles `general` and `risk` (`risk` run because `composer.json` is a public
+  interface: the PHP floor affects consumers). Scope `98cb6cf...HEAD`, 18 files.
+  - ⚠️ risk (API contract): raising `php` to `^8.4` and making `Connection::$pdo` `final` are
+    breaking for consumers on PHP < 8.4 or subclasses that redeclare `$pdo`, but nothing marked
+    them. Fixed: PR title uses `build!:` and the PR body lists both breaks plus the CLI EOF
+    exception change. (Existing commit subjects are not rewritten; the PR title carries the
+    marker.)
+  - ℹ️ general: `phpstan-baseline` script still runs without `--memory-limit=1G`. Rejected for
+    this PR: user asked to keep existing scripts and not touch baseline generation; noted for the
+    docs PR in Follow-ups.
+  - ℹ️ general: tests omit the license header block that every `src/` file has. Rejected: the
+    header describes distributed library code; tests carry no license-relevant content.
+  - ℹ️ risk: the package archive now also ships `tests/`, `phpunit.xml.dist` and `plans/` (no
+    `.gitattributes` export-ignore). Out of scope (the repo already ships `specs/`, `prompts`
+    etc.); sent to Follow-ups.
+  - Checked and not flagged: `ErrorException` with severity `E_STRICT` (2048) now has no label;
+    PHP 8 never raises `E_STRICT`, so unreachable. `getAllMulti()`/`getAll()` without the `false`
+    checks: `PDOStatement::fetchAll()` returns `array` on PHP 8. `select()` string comparison:
+    verified with int keys (`2`) and string keys (`r`). No SQL/shell construction changed.
+  - Spec check: every MUST traced to code plus a passing test or command (see milestone
+    Outcomes). `git diff 98cb6cf -- phpstan.neon phpstan-baseline.neon` empty; no new
+    `phpstan-ignore` in `src/`; tests avoid every excluded area (grep of `tests/`).
+- Merge risk: Low: the only reachable breaks are Composer refusing to install on PHP < 8.4
+  (intended, fails at install time, not runtime) and a fatal for a subclass that redeclares
+  `Connection::$pdo`; source edits are otherwise behaviour-preserving, covered by 60 tests and
+  PHPStan, and revert cleanly.
 
 ## Outcome
+
+Delivered: PHP `^8.4` floor; stable php-cs-fixer 3.95.32, PHPStan 2.3.7 (+ strict 2.1.2,
+deprecation 2.0.6), PHPUnit 12.5.45; no `minimum-stability`; four deprecations removed; PHPStan
+zero errors (7 known + 3 surfaced by stable PHPStan); 60-test PHPUnit suite; `composer test` and
+`composer check`. Evidence: `composer check` exit 0 (cs 0/25 files, PHPStan `[OK] No errors`,
+PHPUnit `OK (60 tests, 128 assertions)`); random-order runs pass. Not verified: PHP 8.5/8.6
+runtime (only 8.4.28 installed; those removals are documented no-ops).
 
 PR: pending
 CI: pending
 
 ## Follow-ups
+
+- Add `--memory-limit=1G` to the `phpstan-baseline` composer script when the baseline is
+  regenerated (docs PR).
+- Add `.gitattributes` `export-ignore` for `tests/`, `plans/`, `specs/`, `phpunit.xml.dist` and
+  other dev files.
+- Analyse `tests/` with PHPStan (needs `phpstan/phpstan-phpunit`).
 
 - `Debug::getString()` lists `UTF-8` before `ASCII` in `mb_detect_encoding()`, so the ASCII branch
   never runs and every string shows `; UTF-8`.
