@@ -62,8 +62,8 @@ parseURL/buildURL). Tests must not call `SPL::init()` in the main process. No do
 | D10 | How does `getString()` detect ASCII? | `mb_check_encoding($str, 'ASCII')` first → no label; otherwise `mb_detect_encoding()` over UTF-8, Windows-1252, ISO-8859-1 (strict); `false` → `unknown` | reorder the candidate list | an explicit check doesn't depend on mbstring's candidate scoring (PHP 8.1+ scores candidates rather than taking the first match) | self |
 | D11 | Test seam for `SPL_CLI` | spawn `PHP_BINARY` with `proc_open()` (array command, no shell) running code that closes STDIN, requires `vendor/autoload.php` and prints `var_export(SPL_CLI, true)` | new public helper as a seam; `#[RunInSeparateProcess]` | the bootstrap runs at autoload, before test code, so only a fresh process can close STDIN first; a helper would add public API just for tests | self |
 | D12 | Where does the Twig test live? | new `tests/SPLRenderTest.php`, `#[RunInSeparateProcess]` | `tests/SPLTest.php` | the error-handling lane is likely to create `tests/SPLTest.php`; a separate file avoids a merge conflict | self |
-| D14 | Quoted `"true"`/`"false"`/`"null"` in env files | converted by `get()` like unquoted ones (found during M1) | keep them as strings by tracking quotedness | `$_ENV` holds plain strings, so quotedness can't survive load-time unquoting without a side table; matches Laravel/phpdotenv `env()` behaviour | self |
 | D13 | How is `xssClean()` removed? | deleted outright, no shim | deprecate first | user decided removal; pre-1.0 personal library; listed under Breaking changes | user |
+| D14 | Quoted `"true"`/`"false"`/`"null"` in env files | converted by `get()` like unquoted ones (found during M1) | keep them as strings by tracking quotedness | `$_ENV` holds plain strings, so quotedness can't survive load-time unquoting without a side table; matches Laravel/phpdotenv `env()` behaviour | self |
 
 ## Requirements
 
@@ -131,13 +131,13 @@ comment per D6 and trim) → interpolate unless single-quoted.
 - **Verify:** `vendor/bin/phpunit tests/util/EnvTest.php` passes (new cases fail on master first), then `composer check` passes.
 - **Outcome:** Added 9 EnvTest cases; before the fix 6 failed and 1 errored ("Undefined array key 1" at Env.php:123); CRLF passed already. `safeLoad()` now trims, skips blank/comment/no-`=`/empty-key lines and strips `export `; `parseValue()` handles quotes (D7) and inline comments (D6) and delegates `${VAR}` to a new protected `interpolate()` (skipped for single quotes); `get()` no longer strips quotes. `vendor/bin/phpunit tests/util/EnvTest.php`: OK (15 tests, 54 assertions); `composer check`: cs clean, PHPStan 0 errors, OK (68 tests). Deviation: see D14.
 
-### [ ] M2 — SPL_CLI from PHP_SAPI and Twig reads twig.template_path
+### [x] M2 — SPL_CLI from PHP_SAPI and Twig reads twig.template_path
 
 - **Approach:** tests/BootstrapTest.php (new, `final class BootstrapTest`, namespace `spl\tests`): `proc_open([PHP_BINARY, '-r', $code], [1 => pipe, 2 => pipe], $pipes)` where `$code` closes STDIN, requires `dirname(__DIR__) . '/vendor/autoload.php'` and echoes `var_export(SPL_CLI, true)`; assert stdout `true`. tests/SPLRenderTest.php (new): three `#[RunInSeparateProcess]` tests that build a temp root (`sys_get_temp_dir()` + unique dir) with `config/config.php` and a template, call `SPL::init($root, false)` and `SPL::render()`; tearDown removes the dir. Then change bootstrap.php:12 and SPL.php:116 (+ docblock at :107).
 - **Test seam:** the `SPL_CLI` constant in a fresh process; `SPL::render()`.
 - **Deliverable:** CLI detection survives a closed STDIN; `twig.template_path` is honoured.
 - **Verify:** `vendor/bin/phpunit tests/BootstrapTest.php tests/SPLRenderTest.php` passes (fails on master first); manual cli-server check prints `false`; `composer check` passes.
-- **Outcome:**
+- **Outcome:** tests/BootstrapTest.php (2 tests) and tests/SPLRenderTest.php (3 separate-process tests) added; before the fix the closed-STDIN test got `'false'`, the template_path test raised `LoaderError: ".../templates" directory does not exist` and the legacy-key test didn't throw. After: `vendor/bin/phpunit tests/BootstrapTest.php tests/SPLRenderTest.php` OK (5 tests). Manual: `php -S 127.0.0.1:18765 router.php` + `curl` printed `false cli-server`. PHPStan then reported `if.alwaysTrue`/`booleanNot.alwaysFalse` at SPL.php:140/173 because it evaluated `PHP_SAPI` as `cli`; fixed by listing `SPL_CLI` under `dynamicConstantNames` in phpstan.neon (a config fact, not an ignore). `composer check`: OK (73 tests), PHPStan 0 errors.
 
 ### [ ] M3 — Str::uncamelise fixed, xssClean removed, Debug ASCII label
 
@@ -149,6 +149,7 @@ comment per D6 and trim) → interpolate unless single-quoted.
 
 ## Deviations
 
+- M2: phpstan.neon gains `dynamicConstantNames: [SPL_CLI]` (file not named in the plan) so PHPStan doesn't treat the SAPI-derived constant as always true. No behaviour change.
 - M1: quoted `"true"`, `"false"` and `"null"` values in env files are now converted to bool/null by `Env::get()` (before, the quotes blocked conversion). Consequence of load-time unquoting (D3); recorded as D14 and as a breaking change.
 
 ## Risks

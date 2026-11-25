@@ -24,6 +24,11 @@ parameters:
     # This helps with some false positives in the codebase
     treatPhpDocTypesAsCertain: false
     
+    # Constants whose value depends on the runtime (SPL_CLI comes from PHP_SAPI),
+    # so PHPStan must not assume the value it sees while analysing from the CLI
+    dynamicConstantNames:
+        - SPL_CLI
+    
     # Don't report errors that are ignored but don't match anything
     reportUnmatchedIgnoredErrors: false
     
