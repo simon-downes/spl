@@ -252,8 +252,8 @@ test class per covered `src/` class, mirrored under `tests/`.
   - ℹ️ general: tests omit the license header block that every `src/` file has. Rejected: the
     header describes distributed library code; tests carry no license-relevant content.
   - ℹ️ risk: the package archive now also ships `tests/`, `phpunit.xml.dist` and `plans/` (no
-    `.gitattributes` export-ignore). Out of scope (the repo already ships `specs/`, `prompts`
-    etc.); sent to Follow-ups.
+    `.gitattributes` export-ignore). Out of scope (the repo already ships `specs/` and other
+    dev files); sent to Follow-ups.
   - Checked and not flagged: `ErrorException` with severity `E_STRICT` (2048) now has no label;
     PHP 8 never raises `E_STRICT`, so unreachable. `getAllMulti()`/`getAll()` without the `false`
     checks: `PDOStatement::fetchAll()` returns `array` on PHP 8. `select()` string comparison:
