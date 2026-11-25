@@ -2,6 +2,7 @@
 
 namespace spl\tests\util;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use spl\util\Env;
@@ -30,6 +31,10 @@ final class EnvTest extends TestCase {
 
     protected function tearDown(): void {
         unlink($this->file);
+
+        // set by the `export` key and putenv() tests
+        unset($_ENV['export']);
+        putenv('SPL_TEST_PUTENV');
 
         foreach (array_keys($_ENV) as $k) {
             if (str_starts_with((string) $k, 'SPL_TEST_')) {
@@ -99,6 +104,27 @@ final class EnvTest extends TestCase {
         $this->assertSame('also', Env::get('SPL_TEST_EXPORTED_SPACED'));
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function exportKeyProvider(): array {
+        return [
+            'key named export'        => ['export=1', '1'],
+            'export prefix on export' => ['export export=2', '2'],
+        ];
+    }
+
+    #[DataProvider('exportKeyProvider')]
+    public function testLoadAcceptsVariableNamedExport(string $line, string $expected): void {
+        $this->writeEnv([$line]);
+
+        Env::load($this->file);
+
+        $this->assertArrayHasKey('export', $_ENV);
+        $this->assertSame($expected, $_ENV['export']);
+        $this->assertArrayNotHasKey('', $_ENV);
+    }
+
     public function testLoadStripsInlineCommentsFromUnquotedValues(): void {
         $this->writeEnv([
             'SPL_TEST_COMMENTED=bar # a comment',
@@ -131,6 +157,22 @@ final class EnvTest extends TestCase {
         $this->assertSame('x # y', Env::get('SPL_TEST_SQ'));
     }
 
+    public function testLoadKeepsQuotedPartIntactWhenTextFollowsIt(): void {
+        $this->writeEnv([
+            'SPL_TEST_QH="a # b" c # d',
+            "SPL_TEST_QS='a # b' c",
+            'SPL_TEST_QU="a # b',
+        ]);
+
+        Env::load($this->file);
+
+        // quoted part followed by other text: kept literally, comment only after the closing quote
+        $this->assertSame('"a # b" c', Env::get('SPL_TEST_QH'));
+        $this->assertSame("'a # b' c", Env::get('SPL_TEST_QS'));
+        // no closing quote: the unquoted comment rule applies to the whole value
+        $this->assertSame('"a', Env::get('SPL_TEST_QU'));
+    }
+
     public function testLoadStripsQuotesBeforeStoringAndInterpolating(): void {
         $this->writeEnv([
             'SPL_TEST_Q="quoted value"',
@@ -145,7 +187,9 @@ final class EnvTest extends TestCase {
 
         $this->assertSame('quoted value', $_ENV['SPL_TEST_Q']);
         $this->assertSame('quoted value!', Env::get('SPL_TEST_R'));
-        $this->assertSame('"kept"', Env::get('SPL_TEST_INNER'));
+        // loading strips one pair and get() strips another (accepted trade-off, D4)
+        $this->assertSame('"kept"', $_ENV['SPL_TEST_INNER']);
+        $this->assertSame('kept', Env::get('SPL_TEST_INNER'));
         $this->assertSame('', Env::get('SPL_TEST_EMPTY_QUOTES'));
         $this->assertSame('"unterminated', Env::get('SPL_TEST_UNTERMINATED'));
         $this->assertSame('"a"b', Env::get('SPL_TEST_TRAILING'));
@@ -196,10 +240,19 @@ final class EnvTest extends TestCase {
         Env::load($this->file);
     }
 
-    public function testGetReturnsEnvironmentValuesVerbatim(): void {
-        $_ENV['SPL_TEST_RAW'] = '"kept"';
+    public function testGetStripsQuotesFromEnvironmentValues(): void {
+        // e.g. set by `docker run --env-file`, which passes quotes through literally
+        $_ENV['SPL_TEST_RAW'] = '"sqlite://localhost/db/app.db"';
+        $_ENV['SPL_TEST_RAW_SINGLE'] = "'My App'";
+        $_ENV['SPL_TEST_RAW_TRUE'] = '"true"';
+        $_ENV['SPL_TEST_RAW_MISMATCHED'] = '"half\'';
+        putenv('SPL_TEST_PUTENV="from process"');
 
-        $this->assertSame('"kept"', Env::get('SPL_TEST_RAW'));
+        $this->assertSame('sqlite://localhost/db/app.db', Env::get('SPL_TEST_RAW'));
+        $this->assertSame('My App', Env::get('SPL_TEST_RAW_SINGLE'));
+        $this->assertTrue(Env::get('SPL_TEST_RAW_TRUE'));
+        $this->assertSame('"half\'', Env::get('SPL_TEST_RAW_MISMATCHED'));
+        $this->assertSame('from process', Env::get('SPL_TEST_PUTENV'));
     }
 
     /**
