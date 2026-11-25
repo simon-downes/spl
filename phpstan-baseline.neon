@@ -1,12 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Parameter \#3 \$value of function curl_setopt expects non\-empty\-string\|null, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Http.php
-
-		-
 			message: '#^Property spl\\util\\Config\:\:\$cache \(array\<string, mixed\>\) does not accept array\<int\|string, mixed\>\.$#'
 			identifier: assign.propertyType
 			count: 1
@@ -35,9 +29,3 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: src/web/App.php
-
-		-
-			message: '#^Property spl\\web\\Response\:\:\$headers \(array\<string, string\>\) does not accept array\<string, int\|string\>\.$#'
-			identifier: assign.propertyType
-			count: 1
-			path: src/web/Response.php

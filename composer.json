@@ -13,6 +13,7 @@
     ],
     "require": {
         "php": "^8.4",
+        "ext-curl": "*",
         "ext-pdo": "*",
         "ext-mbstring": "*",
         "twig/twig": "^3.0"
