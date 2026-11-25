@@ -119,13 +119,15 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
 ### Code structure
 
 - `src/web/App.php`: `handle()`, `loadRoutes()`, `match()` changed; new protected static
-  `dispatch()`, `respond()`, `toResponse()`. Keep `call_user_func($handler, $request, ...$args)`
+  `addRoutes(array)` (the parsing half of `loadRoutes()`), `dispatch()`, `respond()`,
+  `toResponse()`, and `ROUTE_KEY_REGEX` (D6). Keep `call_user_func($handler, $request, ...$args)`
   so the existing baseline entry still matches (spread of a string-keyed array passes named args).
 - New `tests/web/AppTest.php` (`spl\tests\web\AppTest`, final, `test*` methods, follows
   `tests/StrTest.php` for data providers).
 - New `tests/web/fixtures/TestableApp.php` (`spl\tests\web\fixtures\TestableApp extends App`):
-  redeclares `protected static array $routes = []`; public `reset()`, `load(string $file)`,
-  `routes()`, `dispatchRequest(Request)`, `respondTo(Request, Response)`.
+  redeclares `protected static array $routes = []`; public `reset()`, `add(array)`,
+  `load(string $file)`, `routes()`, `matchRoute()`, `dispatchRequest(Request)`,
+  `respondTo(Request, Response)`.
 - New fixture route files under `tests/web/fixtures/routes/*.php` (each returns an array), and
   `tests/web/fixtures/app/config/routes.php` for the separate-process `handle()` tests.
   PHPUnit only collects `*Test.php`, so fixtures aren't run as tests.
@@ -139,7 +141,7 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
 
 ## Milestones
 
-### [ ] M1 — parse method prefixes strictly and reject unprefixed routes
+### [x] M1 — parse method prefixes strictly and reject unprefixed routes
 
 - **Approach:** First add `TestableApp` with `reset()`, `load()`, `routes()` and
   `matchRoute(path, method)` (wraps the existing protected `match()`, so the tests run against
@@ -153,12 +155,19 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
 - **Edge cases:** `GET:/a:b` → path `/a:b`; same path twice with different methods → merged.
 - **Deliverable:** all three prefix forms route; bad keys throw with the key in the message.
 - **Verify:** `vendor/bin/phpunit tests/web/AppTest.php` passes; `composer check` exit 0.
-- **Outcome:**
+- **Outcome:** Before the fix `AppTest` had 13 failures/errors: `(POST):/api/users` →
+  `WebException: Not Found`; `(GET|POST):/x` registered under a bracketed path; all 9 invalid
+  keys (incl. `[A:/x`, `_:/x`, `^:/x`, `(GET:/x`) loaded without an exception; the int return gave
+  `TypeError` from `dispatch()`; the separate-process `handle()` test got the 404 body. After:
+  `vendor/bin/phpunit tests/web/AppTest.php` OK (17 tests, 35 assertions); `composer check` exit 0
+  (cs 0/28 files, PHPStan `[OK] No errors`, PHPUnit OK 77 tests, 163 assertions). Deviations:
+  `addRoutes()` seam; unsupported-type exception moved here from M2.
 
 ### [ ] M2 — convert handler return values by type
 
-- **Approach:** Tests first for each D5 type and an `int` return. Add `toResponse()` (D5, D10,
-  D11) and call it from `dispatch()`; update the `handle()` docblock list.
+- **Approach:** Tests first for null and JsonSerializable returns, and Response/string/array
+  pass-through. Extend `toResponse()` (from M1) with D10 and D11; update the `handle()` docblock
+  list and the exception message's expected-types list.
 - **Test seam:** `TestableApp::dispatchRequest()`; `Response::fromThrowable()` for the 500 mapping.
 - **Deliverable:** every listed type maps as specified; others throw a clear exception.
 - **Verify:** `vendor/bin/phpunit tests/web/AppTest.php` passes; `composer check` exit 0.
@@ -185,6 +194,13 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
 - **Outcome:**
 
 ## Deviations
+
+- M1: `loadRoutes()` now only `require`s the file and passes the array to a new protected
+  `addRoutes(array)`, so tests register closures directly instead of one fixture file per case
+  (only the separate-process `handle()` test uses a routes file). No behaviour change.
+- M1: the `dispatch()` prefactor needs a `Response` return type for PHPStan, so `toResponse()`
+  with the unsupported-type `UnexpectedValueException` (string/array/Response accepted) landed in
+  M1; M2 adds null and JsonSerializable. Scope unchanged.
 
 ## Risks
 

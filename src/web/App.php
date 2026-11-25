@@ -6,7 +6,9 @@
 
 namespace spl\web;
 
+use InvalidArgumentException;
 use Throwable;
+use UnexpectedValueException;
 
 use spl\SPL;
 use spl\util\Config;
@@ -18,6 +20,12 @@ use spl\util\Config;
  * Supports method-specific routes and automatic response conversion.
  */
 class App {
+
+    /**
+     * Matches a route key: a method prefix ("GET", "GET|POST" or "(GET|POST)"), a colon and
+     * the path regex.
+     */
+    protected const ROUTE_KEY_REGEX = '/^(?:\(([A-Z]+(?:\|[A-Z]+)*)\)|([A-Z]+(?:\|[A-Z]+)*)):(.*)$/sD';
 
     /**
      * The registered routes.
@@ -40,34 +48,7 @@ class App {
 
             static::loadRoutes(SPL_ROOT . '/config/routes.php');
 
-            // get a handler and some parameters to use
-            list($handler, $args) = static::match($request->getPath(), $request->getMethod());
-
-            // if handler is a string then we assume it to be an invokable class
-            // in which case we need to instantiate it - via container or directly
-            if (is_string($handler)) {
-
-                // TODO: attempt to resolve from container - when we add one
-
-                // otherwise assume it's a class and instantiate it
-                $handler = new $handler();
-
-            }
-
-            // we pass the request and response in addition to the route arguments
-            $args = array_merge([$request], $args);
-
-            // call the handler to get the desired response
-            $response = call_user_func($handler, ...$args);
-
-            // if the response is a string then assume it's html
-            if (is_string($response)) {
-                $response = Response::html($response);
-            }
-            // if the response is an array then convert it to json
-            elseif (is_array($response)) {
-                $response = Response::json($response);
-            }
+            $response = static::dispatch($request);
 
         }
         catch (Throwable $e) {
@@ -83,27 +64,113 @@ class App {
 
         }
 
+        static::respond($request, $response);
+
+    }
+
+    /**
+     * Matches the request to a route, calls its handler and converts the result to a Response.
+     *
+     * @throws WebException If no route matches or the method is not allowed
+     */
+    protected static function dispatch(Request $request): Response {
+
+        // get a handler and some parameters to use
+        list($handler, $args) = static::match($request->getPath(), $request->getMethod());
+
+        // if handler is a string then we assume it to be an invokable class
+        // in which case we need to instantiate it - via container or directly
+        if (is_string($handler)) {
+
+            // TODO: attempt to resolve from container - when we add one
+
+            // otherwise assume it's a class and instantiate it
+            $handler = new $handler();
+
+        }
+
+        // we pass the request and response in addition to the route arguments
+        $args = array_merge([$request], $args);
+
+        // call the handler to get the desired response
+        return static::toResponse(call_user_func($handler, ...$args), $request);
+
+    }
+
+    /**
+     * Converts a handler's return value to a Response.
+     *
+     * @throws UnexpectedValueException If the handler returned an unsupported type
+     */
+    protected static function toResponse(mixed $result, Request $request): Response {
+
+        if ($result instanceof Response) {
+            return $result;
+        }
+        // if the response is a string then assume it's html
+        elseif (is_string($result)) {
+            return Response::html($result);
+        }
+        // if the response is an array then convert it to json
+        elseif (is_array($result)) {
+            return Response::json($result);
+        }
+
+        throw new UnexpectedValueException(sprintf(
+            'Route handler for %s %s returned unsupported type %s; expected string, array or %s',
+            $request->getMethod(),
+            $request->getPath(),
+            get_debug_type($result),
+            Response::class,
+        ));
+
+    }
+
+    /**
+     * Sends the response to the client.
+     */
+    protected static function respond(Request $request, Response $response): void {
+
         $response->send();
 
     }
 
     /**
      * Loads routes from a PHP file that returns an array of route definitions.
-     *
-     * Supports method-specific routes with syntax: "(METHOD1|METHOD2):path"
      */
     protected static function loadRoutes(string $file): void {
 
-        $routes = require($file);
+        static::addRoutes(require($file));
 
-        foreach ($routes as $regex => $handler) {
+    }
 
-            $methods = [];
+    /**
+     * Registers an array of route definitions.
+     *
+     * Every route key must start with a method prefix, in one of these forms:
+     * "GET:/path", "GET|POST:/path" or "(GET|POST):/path". Method names are uppercase letters.
+     * The rest of the key is the path regex.
+     *
+     * @param array<array-key, callable|string> $routes
+     *
+     * @throws InvalidArgumentException If a route key has no valid method prefix
+     */
+    protected static function addRoutes(array $routes): void {
 
-            if (preg_match('/^([A-z| ]+):(.*)/i', $regex, $m)) {
-                $methods = explode('|', trim($m[1], '()'));
-                $regex   = $m[2];
+        foreach ($routes as $key => $handler) {
+
+            $key = (string) $key;
+
+            if (!preg_match(static::ROUTE_KEY_REGEX, $key, $m)) {
+                throw new InvalidArgumentException(sprintf(
+                    'Route "%s" has no valid method prefix; expected e.g. "GET:/path", "GET|POST:/path" or "(GET|POST):/path"',
+                    $key,
+                ));
             }
+
+            // the methods are in group 1 when bracketed, otherwise in group 2
+            $methods = explode('|', $m[1] !== '' ? $m[1] : $m[2]);
+            $regex   = $m[3];
 
             $current = static::$routes[$regex] ?? [];
 
