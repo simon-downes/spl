@@ -59,6 +59,39 @@ final class StrTest extends TestCase {
         $this->assertSame($expected, Str::ordinal($n));
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function uncamelProvider(): array {
+        return [
+            'camel and separators' => ['helloWorld Foo-Bar', 'hello_world_foo_bar'],
+            'acronym'              => ['XMLHttpRequest', 'xml_http_request'],
+            'already snake'        => ['already_snake', 'already_snake'],
+            'separator runs'       => ['a -- b..c', 'a_b_c'],
+            'unicode letters kept' => ['café-Bar', 'café_bar'],
+            'nfd marks kept'       => ["cafe\u{0301}-Bar", "cafe\u{0301}_bar"],
+            'nfd not split'        => ["re\u{0301}sume\u{0301}Draft", "re\u{0301}sume\u{0301}draft"],
+            'digits'               => ['version2Beta', 'version2_beta'],
+        ];
+    }
+
+    #[DataProvider('uncamelProvider')]
+    public function testUncamelise(string $input, string $expected): void {
+        $this->assertSame($expected, Str::uncamelise($input));
+    }
+
+    public function testXssCleanIsRemoved(): void {
+        $this->assertFalse(method_exists(Str::class, 'xssClean'));
+    }
+
+    public function testStripControlChars(): void {
+        $this->assertSame("ab\tc\n", Str::stripControlChars("a\x00b\tc\x7F\n"));
+    }
+
+    public function testNormaliseLineEndings(): void {
+        $this->assertSame("a\nb\n\nc", Str::normaliseLineEndings("a\r\nb\r\r\r\nc"));
+    }
+
     public function testParseURLReturnsAllComponents(): void {
         $this->assertSame(
             [

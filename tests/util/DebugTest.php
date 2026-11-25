@@ -18,6 +18,17 @@ final class DebugTest extends TestCase {
         $this->assertStringEndsWith('"abc"', $debug->toString('abc'));
     }
 
+    public function testAsciiStringHasNoEncodingLabel(): void {
+        $this->assertSame('string(3) "abc"', (new Debug())->toString('abc'));
+    }
+
+    public function testNonAsciiStringShowsEncoding(): void {
+        $debug = new Debug();
+
+        $this->assertSame("string(5; UTF-8) \"caf\xc3\xa9\"", $debug->toString("caf\xc3\xa9"));
+        $this->assertStringStartsWith('string(4; Windows-1252) ', $debug->toString("caf\xe9"));
+    }
+
     public function testFormatsErrorExceptionWithSeverity(): void {
         $output = (new Debug())->toString(new ErrorException('Something broke', 0, E_WARNING));
 

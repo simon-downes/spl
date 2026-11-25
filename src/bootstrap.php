@@ -8,8 +8,8 @@ use spl\SPL;
 use spl\util\Env;
 use spl\Random;
 
-// determine if this is a command-line environment.
-define('SPL_CLI', defined('STDIN') && is_resource(STDIN) && (get_resource_type(STDIN) == 'stream'));
+// determine if this is a command-line environment (phpdbg runs scripts from a terminal too).
+define('SPL_CLI', in_array(PHP_SAPI, ['cli', 'phpdbg'], true));
 
 // generate a unique request id
 define('SPL_REQUEST_ID', Random::hex(8));

@@ -30,8 +30,10 @@ class Env {
     /**
      * Gets an environment variable with automatic type conversion.
      *
-     * Converts 'true', 'false', and 'null' strings to their respective types.
-     * Removes surrounding quotes from quoted strings.
+     * Removes one pair of matching surrounding single or double quotes, so values passed through
+     * literally (e.g. by `docker run --env-file`) come back unquoted. Env files are already unquoted
+     * when loaded, so a file value written as `FOO="'bar'"` is returned as `bar`.
+     * Then converts 'true', 'false', and 'null' strings to their respective types.
      */
     public static function get(string $var, mixed $default = null): mixed {
 
@@ -39,6 +41,12 @@ class Env {
 
         if ($v === false) {
             return $default;
+        }
+
+        $v = (string) $v;
+
+        if (preg_match('/^([\'"])(.*)\1$/', $v, $matches)) {
+            $v = $matches[2];
         }
 
         // convert certain strings to their typed values
@@ -51,10 +59,6 @@ class Env {
 
             case 'null':
                 return null;
-        }
-
-        if (preg_match('/^([\'"])(.*)\1$/', (string) $v, $matches)) {
-            return $matches[2];
         }
 
         return $v;
@@ -94,6 +98,10 @@ class Env {
 
     /**
      * Load environment variables from the specified file if it exists.
+     *
+     * Each line is `KEY=value`, optionally prefixed with `export `. Blank lines, lines starting
+     * with `#` and lines without a `=` or a key are ignored. Variables that are already set in
+     * the environment are not overwritten. See parseValue() for the value syntax.
      */
     public static function safeLoad(string $file): void {
 
@@ -114,13 +122,28 @@ class Env {
 
         foreach ($lines as $line) {
 
-            // comment so ignore it
-            if (strpos(trim($line), '#') === 0) {
+            $line = trim($line);
+
+            // blank or comment so ignore it
+            if ($line === '' || str_starts_with($line, '#')) {
                 continue;
             }
 
-            // split on first appearance of '=' and trim white space from both elements
-            list($k, $v) = array_map('trim', explode('=', $line, 2));
+            // optional shell-style export prefix
+            $line = (string) preg_replace('/^export\s+/', '', $line);
+
+            // not an assignment so ignore it
+            if (!str_contains($line, '=')) {
+                continue;
+            }
+
+            // split on first appearance of '='
+            [$k, $v] = explode('=', $line, 2);
+            $k = trim($k);
+
+            if ($k === '') {
+                continue;
+            }
 
             # parse the value and add it to the environment if it's not been defined already
             if (!isset($current[$k])) {
@@ -134,11 +157,44 @@ class Env {
     /**
      * Parse a value string from an env file.
      *
-     * Resolves any embedded variables and removes surrounding quotes.
+     * - A value wrapped in matching single or double quotes has the quotes removed and keeps
+     *   everything inside them, including `#`. Text after the closing quote may only be a comment.
+     * - In any other value a `#` preceded by whitespace starts a comment; the value is then trimmed.
+     *   If the value starts with a quoted part that is followed by other text, the whole value is
+     *   kept literally (quotes included) and a comment can only start after that part's closing
+     *   quote: `"a # b" c # d` gives `"a # b" c`. A value with no closing quote has no quoted part.
+     * - `${VAR}` references are replaced with the variable's current value, except in single-quoted values.
      *
      * @throws RuntimeException If an embedded variable is undefined
      */
     protected static function parseValue(string $value): string {
+
+        if (preg_match('/^([\'"])(.*?)\1\s*(?:#.*)?$/', trim($value), $matches)) {
+
+            // single-quoted values are literal
+            if ($matches[1] === "'") {
+                return $matches[2];
+            }
+
+            return static::interpolate($matches[2]);
+
+        }
+
+        // unquoted (or not properly quoted) so strip any inline comment,
+        // starting after the closing quote of a leading quoted part
+        $start = preg_match('/^\s*([\'"]).*?\1/', $value, $matches) ? strlen($matches[0]) : 0;
+        $value = trim(substr($value, 0, $start) . (string) preg_replace('/\s#.*$/', '', substr($value, $start)));
+
+        return static::interpolate($value);
+
+    }
+
+    /**
+     * Replace `${VAR}` references with values from the current environment.
+     *
+     * @throws RuntimeException If an embedded variable is undefined
+     */
+    protected static function interpolate(string $value): string {
 
         preg_match_all('/\${.*?}/', $value, $matches);
 
@@ -155,8 +211,7 @@ class Env {
                 throw new RuntimeException("Undefined environment variable: '{$var_name}'");
             }
 
-            // echo substr($var, 2, -1). "\n";
-            $value = str_replace($var, $v, $value);
+            $value = str_replace($var, (string) $v, $value);
         }
 
         return $value;

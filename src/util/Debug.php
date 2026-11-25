@@ -117,10 +117,13 @@ class Debug {
 
     /**
      * Formats a string value with length and encoding information.
+     * Pure-ASCII strings have no encoding label.
      */
     public function getString(string $str): string {
-        $enc = mb_detect_encoding($str, ['UTF-8', 'WINDOWS-1252', 'ISO-8859-1', 'ASCII'], true);
-        $enc = ($enc == 'ASCII') ? '' : "; $enc";
+        $enc = '';
+        if (!mb_check_encoding($str, 'ASCII')) {
+            $enc = '; ' . (mb_detect_encoding($str, ['UTF-8', 'WINDOWS-1252', 'ISO-8859-1'], true) ?: 'unknown');
+        }
         return sprintf('string(%d%s) "%s"', strlen($str), $enc, $str);
     }
 

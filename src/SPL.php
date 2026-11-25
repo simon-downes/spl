@@ -130,7 +130,7 @@ class SPL {
      * Renders a Twig template with the provided context.
      *
      * Lazily initializes Twig environment on first use.
-     * Template directory is configured via twig.templates config (defaults to /templates).
+     * Template directory is configured via twig.template_path config (defaults to SPL_ROOT/templates).
      */
     public static function render(string $template, array $context = []): string {
 
@@ -139,7 +139,7 @@ class SPL {
         if (empty($twig)) {
 
             $twig = new TwigEnvironment(
-                new TwigLoader((string) static::config('twig.templates', SPL_ROOT . '/templates')),
+                new TwigLoader((string) static::config('twig.template_path', SPL_ROOT . '/templates')),
                 [
                     'cache'       => SPL::config('twig.cache', false),
                     'debug'       => SPL_DEBUG,

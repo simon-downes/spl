@@ -209,17 +209,18 @@ class Str {
     }
 
     /**
-     * Convert a camel-cased string to lower case with underscores
+     * Convert a camel-cased string to lower case with underscores.
+     * Any run of characters that aren't letters or digits (including underscores) becomes a single underscore.
      */
     public static function uncamelise(string $str): string {
         return mb_strtolower(
             (string) preg_replace(
-                '/^A-Z^a-z^0-9]+/',
+                '/[^\p{L}\p{M}\p{N}]+/u',
                 '_',
                 (string) preg_replace(
                     '/([a-z\d])([A-Z])/u',
                     '$1_$2',
-                    (string) preg_replace('/([A-Z+])([A-Z][a-z])/u', '$1_$2', $str),
+                    (string) preg_replace('/([A-Z]+)([A-Z][a-z])/u', '$1_$2', $str),
                 ),
             ),
         );
@@ -305,64 +306,6 @@ class Str {
         $pow   = (int) min($pow, count($units) - 1);
         $bytes /= (1 << (10 * $pow));
         return number_format($bytes, $precision) . ' ' . $units[$pow];
-    }
-
-    /**
-     * Remove XSS vulnerabilities from a string.
-     * Shamelessly ripped from Kohana v2 and then tweaked to remove control characters
-     * and replace the associated regex components with \s instead.
-     * Also added a couple of other tags to the really bad list.
-     * Handles most of the XSS vectors listed at http://ha.ckers.org/xss.html
-     */
-    public static function xssClean(string $str, string $charset = 'UTF-8'): string {
-
-        if (empty($str)) {
-            return $str;
-        }
-
-        // strip any raw control characters that might interfere with our cleaning
-        $str = static::stripControlChars($str);
-
-        // fix and decode entities (handles missing ; terminator)
-        $str = str_replace(['&amp;','&lt;','&gt;'], ['&amp;amp;','&amp;lt;','&amp;gt;'], $str);
-        $str = (string) preg_replace('/(&#*\w+)\s+;/u', '$1;', $str);
-        $str = (string) preg_replace('/(&#x*[0-9A-F]+);*/iu', '$1;', $str);
-        $str = html_entity_decode($str, ENT_COMPAT, $charset);
-
-        // strip any control characters that were sneakily encoded as entities
-        $str = static::stripControlChars($str);
-
-        // normalise line endings
-        $str = static::normaliseLineEndings($str);
-
-        // remove any attribute starting with "on" or xmlns
-        $str = (string) preg_replace('#(?:on[a-z]+|xmlns)\s*=\s*[\'"\s]?[^\'>"]*[\'"\s]?\s?#iu', '', $str);
-
-        // remove javascript: and vbscript: protocols and -moz-binding CSS property
-        $str = (string) preg_replace('#([a-z]*)\s*=\s*([`\'"]*)\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:#iu', '$1=$2nojavascript...', $str);
-        $str = (string) preg_replace('#([a-z]*)\s*=([\'"]*)\s*v\s*b\s*s\s*c\s*r\s*i\s*p\s*t\s*:#iu', '$1=$2novbscript...', $str);
-        $str = (string) preg_replace('#([a-z]*)\s*=([\'"]*)\s*-moz-binding\s*:#u', '$1=$2nomozbinding...', $str);
-
-        // only works in IE: <span style="width: expression(alert('XSS!'));"></span>
-        $str = (string) preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?expression\s*\([^>]*+>#isu', '$1>', $str);
-        $str = (string) preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?behaviour\s*\([^>]*+>#isu', '$1>', $str);
-        $str = (string) preg_replace('#(<[^>]+?)style\s*=\s*[`\'"]*.*?s\s*c\s*r\s*i\s*p\s*t\s*:*[^>]*+>#isu', '$1>', $str);
-
-        // remove namespaced elements (we do not need them)
-        $str = (string) preg_replace('#</*\w+:\w[^>]*+>#iu', '', $str);
-
-        // remove data URIs
-        $str = (string) preg_replace("#data:[\w/]+;\w+,[\w\r\n+=/]*#iu", "data: not allowed", $str);
-
-        // remove really unwanted tags
-        do {
-            $old = $str;
-            $str = (string) preg_replace('#</*(?:applet|b(?:ase|gsound|link)|body|embed|frame(?:set)?|head|html|i(?:frame|layer)|l(?:ayer|ink)|meta|object|s(?:cript|tyle)|title|xml)[^>]*+>#iu', '', $str);
-        }
-        while ($old !== $str);
-
-        return $str;
-
     }
 
     /**
