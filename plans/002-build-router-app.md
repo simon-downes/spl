@@ -163,7 +163,7 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
   (cs 0/28 files, PHPStan `[OK] No errors`, PHPUnit OK 77 tests, 163 assertions). Deviations:
   `addRoutes()` seam; unsupported-type exception moved here from M2.
 
-### [ ] M2 — convert handler return values by type
+### [x] M2 — convert handler return values by type
 
 - **Approach:** Tests first for null and JsonSerializable returns, and Response/string/array
   pass-through. Extend `toResponse()` (from M1) with D10 and D11; update the `handle()` docblock
@@ -171,7 +171,11 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
 - **Test seam:** `TestableApp::dispatchRequest()`; `Response::fromThrowable()` for the 500 mapping.
 - **Deliverable:** every listed type maps as specified; others throw a clear exception.
 - **Verify:** `vendor/bin/phpunit tests/web/AppTest.php` passes; `composer check` exit 0.
-- **Outcome:**
+- **Outcome:** Before: null and both JsonSerializable cases (array and scalar `jsonSerialize()`)
+  threw `UnexpectedValueException` (3 errors). After: `toResponse()` maps null → 204 with no
+  content-type/content-length and JsonSerializable → 200 JSON; string/array/Response
+  pass-through tests added. `AppTest` OK (23 tests, 52 assertions); `composer check` exit 0
+  (cs 0/28, PHPStan `[OK] No errors`, PHPUnit OK 83 tests, 180 assertions).
 
 ### [ ] M3 — pass named route captures as named arguments
 

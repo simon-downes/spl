@@ -7,6 +7,7 @@
 namespace spl\web;
 
 use InvalidArgumentException;
+use JsonSerializable;
 use Throwable;
 use UnexpectedValueException;
 
@@ -39,8 +40,10 @@ class App {
      *
      * Automatically converts handler return values to Response objects:
      * - Strings are converted to HTML responses
-     * - Arrays are converted to JSON responses
+     * - Arrays and JsonSerializable objects are converted to JSON responses
+     * - null is converted to a 204 No Content response
      * - Response objects are used as-is
+     * - Anything else is an error (500)
      */
     public static function handle(Request $request): void {
 
@@ -115,12 +118,23 @@ class App {
         elseif (is_array($result)) {
             return Response::json($result);
         }
+        // nothing to return; 204 responses must not have content headers
+        elseif ($result === null) {
+            return (new Response(204))
+                ->setHeader('content-type', null)
+                ->setHeader('content-length', null);
+        }
+        // serialise the object itself, jsonSerialize() may return any JSON value
+        elseif ($result instanceof JsonSerializable) {
+            return new Response(200, json_encode($result, JSON_THROW_ON_ERROR), 'application/json');
+        }
 
         throw new UnexpectedValueException(sprintf(
-            'Route handler for %s %s returned unsupported type %s; expected string, array or %s',
+            'Route handler for %s %s returned unsupported type %s; expected string, array, null, %s or %s',
             $request->getMethod(),
             $request->getPath(),
             get_debug_type($result),
+            JsonSerializable::class,
             Response::class,
         ));
 

@@ -3,6 +3,7 @@
 namespace spl\tests\web;
 
 use InvalidArgumentException;
+use JsonSerializable;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -128,6 +129,72 @@ final class AppTest extends TestCase {
     }
 
     // --- handler return values ---------------------------------------------------------------
+
+    public function testStringReturnBecomesHtml(): void {
+        TestableApp::add(['GET:/x' => fn(Request $r) => '<p>hi</p>']);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/x'));
+
+        $this->assertSame(200, $response->getStatus()['code']);
+        $this->assertSame('text/html; charset=UTF-8', $response->getHeader('content-type'));
+        $this->assertSame('<p>hi</p>', $response->getBody());
+    }
+
+    public function testArrayReturnBecomesJson(): void {
+        TestableApp::add(['GET:/x' => fn(Request $r) => ['a' => 1]]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/x'));
+
+        $this->assertSame(200, $response->getStatus()['code']);
+        $this->assertSame('application/json; charset=UTF-8', $response->getHeader('content-type'));
+        $this->assertSame('{"a":1}', $response->getBody());
+    }
+
+    public function testResponseReturnIsUsedAsIs(): void {
+        $created = Response::text('made', 201);
+        TestableApp::add(['GET:/x' => fn(Request $r) => $created]);
+
+        $this->assertSame($created, TestableApp::dispatchRequest($this->request('GET', '/x')));
+    }
+
+    public function testNullReturnBecomesNoContent(): void {
+        TestableApp::add(['GET:/x' => fn(Request $r) => null]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/x'));
+
+        $this->assertSame(['code' => 204, 'message' => 'No Content'], $response->getStatus());
+        $this->assertSame('', $response->getBody());
+        $this->assertNull($response->getHeader('content-type'));
+        $this->assertNull($response->getHeader('content-length'));
+    }
+
+    /**
+     * @return array<string, array{mixed, string}>
+     */
+    public static function jsonSerializableValues(): array {
+        return [
+            'object' => [['id' => 7, 'name' => 'Ann'], '{"id":7,"name":"Ann"}'],
+            'scalar' => ['plain', '"plain"'],
+        ];
+    }
+
+    #[DataProvider('jsonSerializableValues')]
+    public function testJsonSerializableReturnBecomesJson(mixed $value, string $json): void {
+        $result = new class ($value) implements JsonSerializable {
+            public function __construct(private mixed $value) {}
+
+            public function jsonSerialize(): mixed {
+                return $this->value;
+            }
+        };
+        TestableApp::add(['GET:/x' => fn(Request $r) => $result]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/x'));
+
+        $this->assertSame(200, $response->getStatus()['code']);
+        $this->assertSame('application/json; charset=UTF-8', $response->getHeader('content-type'));
+        $this->assertSame($json, $response->getBody());
+    }
 
     public function testUnsupportedReturnTypeThrows(): void {
         TestableApp::add(['GET:/x' => fn(Request $r) => 42]);
