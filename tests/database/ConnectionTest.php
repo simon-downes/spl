@@ -4,6 +4,7 @@ namespace spl\tests\database;
 
 use PHPUnit\Framework\TestCase;
 use spl\database\Connection;
+use stdClass;
 
 final class ConnectionTest extends TestCase {
 
@@ -100,6 +101,33 @@ final class ConnectionTest extends TestCase {
 
         // a new in-memory database has no tables
         $this->assertSame(0, $this->db->getOne('SELECT COUNT(*) FROM sqlite_master'));
+    }
+
+    /**
+     * Parses a URL with makeDSN() without opening a connection, so non-SQLite URLs can be checked.
+     */
+    private static function makeDSN(string $url): stdClass {
+        $parser = new class extends Connection {
+            public function __construct() {}
+
+            public function parse(string $url): stdClass {
+                return $this->makeDSN($url);
+            }
+        };
+
+        return $parser->parse($url);
+    }
+
+    public function testMakeDSNDecodesEncodedCredentials(): void {
+        $dsn = self::makeDSN('mysql://u%40x:p%2Fs%23s@db.example.com/app');
+
+        $this->assertSame('mysql', $dsn->type);
+        $this->assertSame('u@x', $dsn->user);
+        $this->assertSame('p/s#s', $dsn->pass);
+        $this->assertSame('db.example.com', $dsn->host);
+        $this->assertSame(3306, $dsn->port);
+        $this->assertSame('app', $dsn->db);
+        $this->assertSame('mysql:host=db.example.com;port=3306;dbname=app;charset=utf8mb4', $dsn->pdo);
     }
 
 }

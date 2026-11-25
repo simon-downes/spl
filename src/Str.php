@@ -122,12 +122,17 @@ class Str {
      * - Always including all URL components
      * - Converting query string to an associative array
      * - Supporting default values
+     * - Decoding percent-encoded characters after parsing, so encoded delimiters
+     *   such as %2F, %23 and %40 can appear in credentials
+     *
+     * user, pass, host and path are decoded once with rawurldecode(), so a literal '+'
+     * stays a '+'; the query is decoded by parse_str(). Default values are returned as given.
      *
      * @return array<string, mixed>|null URL components or null if parsing fails
      */
     public static function parseURL(string $url, array $defaults = []): array|null {
 
-        $parts = parse_url(urldecode($url));
+        $parts = parse_url($url);
 
         if ($parts === false) {
             return null;
@@ -136,7 +141,12 @@ class Str {
         $url = [];
 
         foreach (['scheme', 'host', 'port', 'user', 'pass', 'path'] as $k) {
-            $url[$k] = $parts[$k] ?? $defaults[$k] ?? '';
+            if (isset($parts[$k])) {
+                $url[$k] = is_string($parts[$k]) ? rawurldecode($parts[$k]) : $parts[$k];
+            }
+            else {
+                $url[$k] = $defaults[$k] ?? '';
+            }
         }
 
         $url['query'] = [];
@@ -152,10 +162,15 @@ class Str {
     /**
      * Builds a URL string from component parts.
      *
+     * Accepts the array returned by parseURL(); empty components are omitted.
+     * The user and password are percent-encoded. The query is not included.
+     *
      * By default, passwords are masked as '<password>' for security.
      * Set show_pw to true to include the actual password.
      */
     public static function buildURL(array $parts, bool $show_pw = false): string {
+
+        $parts = array_filter($parts, fn($v) => $v !== null && $v !== '');
 
         $url = '';
 
@@ -164,9 +179,9 @@ class Str {
         }
 
         if (isset($parts['user'])) {
-            $url .= $parts['user'];
+            $url .= rawurlencode((string) $parts['user']);
             if (isset($parts['pass'])) {
-                $url .= ':' . ($show_pw ? $parts['pass'] : '<password>');
+                $url .= ':' . ($show_pw ? rawurlencode((string) $parts['pass']) : '<password>');
             }
             $url .= '@';
         }

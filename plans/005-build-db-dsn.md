@@ -134,7 +134,7 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 
 ## Milestones
 
-### [ ] M1 — Encoded credentials parse end to end
+### [x] M1 — Encoded credentials parse end to end
 
 - **Approach:** In `Str::parseURL()` call `parse_url($url)` on the raw string, then
   `rawurldecode()` the parsed `user`, `pass`, `host`, `path` (not defaults); keep the loop and
@@ -145,7 +145,10 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   not a separator; no user → `''`.
 - **Deliverable:** `mysql://u:p%2Fss@host/db` yields password `p/ss` in the DSN.
 - **Verify:** `vendor/bin/phpunit --filter 'StrTest|ConnectionTest'` passes; new cases failed before the change.
-- **Outcome:**
+- **Outcome:** parseURL parses the raw URL and rawurldecodes user/pass/host/path; buildURL skips
+  empty parts and re-encodes credentials. Before the change 10 of the new tests failed (encoded
+  slash/hash/plus credentials, round trips, mask, makeDSN); after, `phpunit --filter
+  'StrTest|ConnectionTest'` OK (46 tests), PHPStan 0 errors.
 
 ### [ ] M2 — SQLite absolute paths and `:memory:`
 
