@@ -57,9 +57,9 @@ Codebase facts (master @ fcd7a53):
 | D7 | Exception types | `InvalidArgumentException` for a bad route key (load); `UnexpectedValueException` for an unsupported return type; message for the latter names method, path and `get_debug_type()` | `WebException(500)`; `LogicException` | Not client errors, so not WebException; both reach `Response::fromThrowable()` → 500 → `SPL::error()` like any other exception | self |
 | D8 | Where HEAD falls back to GET | In `match()`: `$handlers[$method] ?? ($method === 'HEAD' ? $handlers['GET'] ?? null : null)` | Auto-register HEAD in `loadRoutes()` | `loadRoutes()` merges with `$current + ...` (first wins), so auto-registering would shadow a later explicit `HEAD:/x` handler; the match-time fallback lets explicit HEAD win | self |
 | D9 | Suppressing the HEAD body | In App: `ob_start(); $response->send(); ob_end_clean();` for HEAD | Add `Response::send(bool $body)`; `setBody('')` + restore content-length | Zero change to `Response.php` (another lane); headers and content-length from the GET body are untouched because `header()` isn't buffered | self |
-| D10 | 204 response shape for `null` | `new Response(204)` with `content-type` and `content-length` removed via `setHeader(name, null)` | Plain `new Response(204)` | RFC 9110 forbids Content-Length on 204; uses only the existing public API | self |
+| D10 | 204 response shape for `null` | `new Response(204)` with `content-type` and `content-length` removed via `setHeader(name, null)`; built by private `App::noContent()` as an anonymous `Response` subclass whose `send()` sets `ini_set('default_mimetype', '')` first, so PHP doesn't add its default `Content-type` (post-PR review) | Plain `new Response(204)`; `header_remove('Content-Type')` (probed with `php -S`: PHP still adds the default); a check in `respond()` (needs `getStatus()`/`getHeader()`, which are `__call` magic PHPStan can't see, and Response.php is another lane) | RFC 9110 forbids Content-Length on 204 and there's no content to type; keeps the fix App-local with no PHPStan ignores | self, user |
 | D11 | JsonSerializable encoding | `new Response(200, json_encode($result, JSON_THROW_ON_ERROR), 'application/json')` | `Response::json($result->jsonSerialize())` | `jsonSerialize()` may return a scalar; `Response::json()` only accepts `array` | self |
-| D12 | Test seam | Extract `protected static dispatch(Request): Response` (match → instantiate → invoke → convert) and `protected static respond(Request, Response): void` (HEAD-aware send) from `handle()`; test via `tests/web/fixtures/TestableApp.php` (subclass redeclaring `$routes`, public wrappers) and fixture route files; two `#[RunInSeparateProcess]` `handle()` tests with `SPL_ROOT` = `tests/web/fixtures/app` | Reflection on `App`; only separate-process `handle()` tests | `handle()` needs `SPL_ROOT` and exits via `SPL::error()` on 5xx; a subclass keeps most tests in-process and isolated (own static `$routes`) | self |
+| D12 | Test seam | Extract `protected static dispatch(Request): Response` (match → instantiate → invoke → convert) and `protected static respond(Request, Response): void` (HEAD-aware send) from `handle()`; test via `tests/web/fixtures/TestableApp.php` (subclass redeclaring `$routes`, public wrappers) and fixture route files; tests assert behaviour through `dispatch()`/`respond()`, not `match()`'s return value (post-PR review); the protected surface is `handle()` (public), `loadRoutes()`, `addRoutes()`, `match()`, `dispatch()` and `respond()`, and `ROUTE_KEY_REGEX`, `toResponse()`, `routeArguments()` and `noContent()` are private (user decision after the post-PR review); two `#[RunInSeparateProcess]` `handle()` tests with `SPL_ROOT` = `tests/web/fixtures/app` | Reflection on `App`; only separate-process `handle()` tests | `handle()` needs `SPL_ROOT` and exits via `SPL::error()` on 5xx; a subclass keeps most tests in-process and isolated (own static `$routes`) | self |
 | D13 | Optional groups that don't participate | Match with `PREG_UNMATCHED_AS_NULL`; named routes omit unmatched named groups (handler default applies); unnamed routes are rebuilt to PCRE's default shape (trailing unmatched dropped, others `''`) in `routeArguments()` | PCRE default flags for both | With default flags an unmatched trailing named group vanishes, the route then looks unnamed and its unnamed captures are passed positionally into the wrong parameters (found in review); `null` for unnamed groups would break `string`-typed handlers | self |
 
 ## Requirements
@@ -92,10 +92,14 @@ Codebase facts (master @ fcd7a53):
     fails before the fix with "Cannot use positional argument after named argument").
   - AC: a group name with no matching parameter throws `Error` with "Unknown named parameter".
 - MUST convert handler results: string → 200 HTML, array → 200 JSON, Response → same instance,
-  null → 204 with empty body and no content-type/content-length, JsonSerializable → 200
+  null → 204 with empty body and no content-type/content-length (none sent on the wire either,
+  not even PHP's default content-type), JsonSerializable → 200
   `application/json` with `json_encode()` of the object; any other type throws
   `UnexpectedValueException` naming the route and the type, which `Response::fromThrowable()`
   maps to 500.
+  - AC: `respond()` of the null → 204 response leaves PHP's `default_mimetype` empty (separate
+    process); other responses leave it alone; `php -S` + curl shows no `Content-type` or
+    `Content-Length` on the 204.
   - AC: one test per type at `dispatch()`; `int` return throws `UnexpectedValueException` with
     message containing `GET /x` and `int` (fails before the fix with an Error/TypeError), and
     `Response::fromThrowable()` of it `isServerError()`.
@@ -114,20 +118,20 @@ All changes live in `src/web/App.php`. `handle()` becomes: load routes → `disp
 Throwable `Response::fromThrowable()` (+ `SPL::error()` for 5xx, unchanged) → `respond()`.
 `loadRoutes()` parses prefixes with the D6 regex and throws on a miss; `match()` adds the HEAD
 fallback and filters named captures; `dispatch()` owns handler invocation and calls a new
-`protected static toResponse(mixed $result, Request $request): Response` for D5.
+`private static toResponse(mixed $result, Request $request): Response` for D5.
 
 ### Code structure
 
 - `src/web/App.php`: `handle()`, `loadRoutes()`, `match()` changed; new protected static
-  `addRoutes(array)` (the parsing half of `loadRoutes()`), `dispatch()`, `respond()`,
-  `toResponse()`, and `ROUTE_KEY_REGEX` (D6). Keep `call_user_func($handler, $request, ...$args)`
+  `addRoutes(array)` (the parsing half of `loadRoutes()`), `dispatch()` and `respond()`; new
+  private `toResponse()`, `routeArguments()`, `noContent()` and `ROUTE_KEY_REGEX` (D6). Keep `call_user_func($handler, $request, ...$args)`
   so the existing baseline entry still matches (spread of a string-keyed array passes named args).
 - New `tests/web/AppTest.php` (`spl\tests\web\AppTest`, final, `test*` methods, follows
   `tests/StrTest.php` for data providers).
 - New `tests/web/fixtures/TestableApp.php` (`spl\tests\web\fixtures\TestableApp extends App`):
   redeclares `protected static array $routes = []`; public `reset()`, `add(array)`,
-  `load(string $file)`, `routes()`, `matchRoute()`, `dispatchRequest(Request)`,
-  `respondTo(Request, Response)`.
+  `dispatchRequest(Request)`, `respondTo(Request, Response)` (`load()`, `routes()` and
+  `matchRoute()` were removed in review).
 - New fixture route files under `tests/web/fixtures/routes/*.php` (each returns an array), and
   `tests/web/fixtures/app/config/routes.php` for the separate-process `handle()` tests.
   PHPUnit only collects `*Test.php`, so fixtures aren't run as tests.
@@ -208,10 +212,15 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
   against a temp app using `SPL::run()`: `GET /` 200 `content-length: 13` + body; `HEAD /`
   200 `content-length: 13`, no body; `POST /api/users` on `(GET|POST)` → `{"method":"POST"}`;
   `GET /users/42` on `(?<id>\d+)` → `{"id":"42"}`; `PUT` → 405; null handler → `204 No Content`
-  with no content-length (PHP's SAPI still adds its default `Content-type`).
+  with no content-length (PHP's SAPI still added its default `Content-type`; fixed in the
+  post-PR review, D10).
 
 ## Deviations
 
+- Post-PR review: `ROUTE_KEY_REGEX`, `toResponse()` and `routeArguments()` are now `private`
+  (called via `self::`), so subclasses can't change the route grammar that `addRoutes()` depends
+  on. The null → 204 response now goes out without PHP's default `Content-type` (D10).
+  `TestableApp::matchRoute()` was removed; the tests that used it assert through dispatch.
 - Review: D13 changed. With default `preg_match` flags, `GET:/(\w+)(?:/(?<id>\d+))?` on `/users`
   returned no string keys, so `'users'` was passed positionally (into `$id`), and a non-trailing
   unmatched named group arrived as `''` rather than using the handler default. `match()` now uses
@@ -273,6 +282,27 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
     keys, HEAD fallback/explicit HEAD/405, HEAD body in `respond()` and `handle()`, named/positional
     args, return types, `composer check`). `git diff fcd7a53 -- phpstan.neon phpstan-baseline.neon`
     empty; no `phpstan-ignore` in App.php.
+- Independent review (post-PR), `/tmp/reviews/pr-5.md`, scope `fcd7a53...b47415c`:
+  - ⚠️ risk (cross-PR, #3): `testHeadIsAnsweredLikeGet` asserted `assertSame(12, ...)` on
+    `content-length`, and #3 makes it a string, so whichever PR lands second fails. Fixed: the
+    assertion compares `(string)` of the value with `'12'`. Verified by trial-merging
+    `build-it/003-request-response` into this branch in a throwaway detached worktree: PHPUnit OK
+    (159 tests); merge discarded, not pushed.
+  - ℹ️ general (tests): `testSingleMethodPrefix`, `testMultiMethodPrefix`,
+    `testExplicitHeadHandlerWins` and `assertMethodNotAllowed()` pinned `match()`'s
+    `[handler, args]` tuple via `matchRoute()`. Fixed: they assert response bodies and the 405
+    `WebException` through `dispatchRequest()`; `TestableApp::matchRoute()` removed.
+  - ℹ️ general: `ROUTE_KEY_REGEX`, `toResponse()` and `routeArguments()` were protected override
+    points nothing needed. Fixed: private, via `self::` (user decision: protected surface is
+    `addRoutes`, `match`, `dispatch`, `respond`, `loadRoutes`, plus public `handle`).
+  - ❓ general → user decision: the null → 204 still carried PHP's default `Content-type`,
+    contradicting "204 with no content headers". Fixed App-locally (D10). Test:
+    `testRespondStopsPhpDefaultContentTypeForNoContent` (failed first: `'text/html'`) and
+    `testRespondKeepsPhpDefaultContentTypeForOtherResponses`; `php -S` + curl: `GET`/`HEAD` on
+    a null route give `204 No Content` with no `Content-type` and no `Content-Length`, a string
+    route still sends `content-type: text/html; charset=UTF-8`.
+  - ℹ️ risk (cross-PR, #7): HEAD requests ending in a 5xx still get `SPL::error()`'s error-page
+    body. Kept as a follow-up (user decision; it's in `SPL::error()`'s path).
 - Merge risk: Medium: `handle()` runs this code on every request, and an app with any
   unprefixed route key now gets a 500 on every request; it fails immediately and loudly with the
   key in the message, is marked as breaking, and reverts cleanly.
@@ -284,7 +314,7 @@ Delivered in `src/web/App.php` only: strict method-prefix parsing (`GET:/x`, `GE
 handlers with no body; named captures as named handler arguments; handler results mapped by
 type (null → 204, JsonSerializable → JSON, other types → `UnexpectedValueException` → 500).
 No change to Response/Request/WebException. Evidence: `composer check` exit 0 (cs 0/29 files,
-PHPStan `[OK] No errors`, PHPUnit OK 102 tests, 203 assertions); random-order seeds 1, 7, 42,
+PHPStan `[OK] No errors`, PHPUnit OK 104 tests after the post-PR review fixes); random-order seeds 1, 7, 42,
 999, 1234 OK; `php -S` + curl check (M4 Outcome). Not verified: header output inside PHPUnit
 (CLI `header()` is a no-op; covered by the curl check instead); behaviour behind Apache/nginx.
 
@@ -298,8 +328,8 @@ CI: none (the repository has no CI checks)
   `DELETE:/users/(\d+)`) is unreachable and the request gets 405 (pre-existing; seen in the
   curl check).
 - 405 responses carry no `Allow` header.
-- For a null handler result PHP's SAPI adds its default `Content-type` to the 204; suppressing
-  it needs `header_remove()`/`default_mimetype` handling in `Response::send()` (request-response
-  lane).
+- A handler that returns its own `Response` with status 204 still gets a `content-type` (the
+  `Response` constructor always sets one) and PHP's defaults; only the null → 204 path is
+  header-free. A general fix belongs in `Response` (request-response lane).
 - HEAD requests that end in a 5xx still get `SPL::error()`'s error page body (error-handling
   lane).
