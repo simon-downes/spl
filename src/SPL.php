@@ -38,6 +38,7 @@ class SPL {
      *
      * Sets SPL_ROOT and SPL_DEBUG constants and loads environment variables.
      * SPL_DEBUG is determined from APP_DEBUG or APP_ENV environment variables.
+     * A relative APP_LOG_FILE is resolved against SPL_ROOT and becomes the default log destination.
      */
     public static function init(string $directory = '', bool $load_env = true): void {
 
@@ -67,10 +68,12 @@ class SPL {
 
         $log_file = (string) env('APP_LOG_FILE', '');
 
-        // not an absolute path so make it relative to the root directory
-        if ($log_file && substr($log_file, 0, 1) != '/') {
+        // not an absolute path so make it relative to the root directory ('php' means error_log())
+        if ($log_file && $log_file != 'php' && substr($log_file, 0, 1) != '/') {
             $log_file = SPL_ROOT . '/' . $log_file;
         }
+
+        Log::setFile($log_file);
 
     }
 

@@ -11,7 +11,10 @@ use BadMethodCallException;
 /**
  * Simple logging system with support for multiple log levels.
  *
- * Log messages can be directed to error_log() or a file.
+ * Log messages can be directed to error_log() or a file. The destination is, in order: the $file
+ * argument, the file set with setFile() (SPL::init() sets it from APP_LOG_FILE, resolved against
+ * SPL_ROOT), or the raw APP_LOG_FILE environment variable. An empty destination or 'php' means
+ * error_log(). Missing directories are created before writing to a file.
  * Log level can be controlled via APP_LOG_LEVEL environment variable.
  *
  * @method static void debug(string $message, string $file = '') Log a debug message
@@ -34,6 +37,11 @@ class Log {
         "ERROR"     => 400,
         "CRITICAL"  => 500,
     ];
+
+    /**
+     * The default log destination; null means use the APP_LOG_FILE environment variable.
+     */
+    protected static ?string $file = null;
 
     /**
      * Cannot be instantiated.
@@ -62,8 +70,8 @@ class Log {
      *
      * Each line is prefixed with timestamp, request ID, and level.
      *
-     * @param string $file Use 'php' to direct output to error_log(), empty for APP_LOG_FILE,
-     *                     or specify a custom file path
+     * @param string $file Use 'php' to direct output to error_log(), empty for the default
+     *                     destination (see setFile()), or specify a custom file path
      */
     public static function message(string $message, string $level = "INFO", string $file = ''): void {
 
@@ -83,14 +91,61 @@ class Log {
             $output .= "{$prefix} {$line}\n";
         }
 
-        $file = $file ?: (string) env('APP_LOG_FILE');
+        $file = static::destination($file);
 
-        if (empty($file) || ($file == 'php')) {
+        if (static::isErrorLog($file)) {
             error_log(trim($output));
             return;
         }
 
+        // create the directory if needed - if that fails then file_put_contents() reports the problem
+        $dir = dirname($file);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+
         file_put_contents($file, $output, FILE_APPEND | LOCK_EX);
+
+    }
+
+    /**
+     * Sets the default log destination used when no file is passed to a log method.
+     *
+     * Use 'php' or an empty string for error_log(), or null to fall back to APP_LOG_FILE.
+     */
+    public static function setFile(?string $file): void {
+
+        static::$file = $file;
+
+    }
+
+    /**
+     * Checks if a message at the given level would be written with error_log().
+     *
+     * True when the level passes APP_LOG_LEVEL and the default destination is error_log().
+     */
+    public static function usesErrorLog(string $level = 'INFO'): bool {
+
+        return static::shouldLog(strtoupper($level)) && static::isErrorLog(static::destination());
+
+    }
+
+    /**
+     * Returns the destination for a message: the given file, the file set with setFile(),
+     * or APP_LOG_FILE.
+     */
+    protected static function destination(string $file = ''): string {
+
+        return $file ?: (static::$file ?? (string) env('APP_LOG_FILE', ''));
+
+    }
+
+    /**
+     * Checks if a destination means error_log().
+     */
+    protected static function isErrorLog(string $file): bool {
+
+        return empty($file) || ($file == 'php');
 
     }
 

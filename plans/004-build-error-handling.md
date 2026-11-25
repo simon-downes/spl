@@ -120,14 +120,14 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ## Milestones
 
-### [ ] M1 — Relative log paths resolve against SPL_ROOT
+### [x] M1 — Relative log paths resolve against SPL_ROOT
 
 - **Approach:** Bug fix: first write `tests/SPLTest.php` with a fixture runner (writes `<root>/.env` and `<root>/run.php` requiring `dirname(__DIR__) . '/vendor/autoload.php'`, runs `proc_open([PHP_BINARY, run.php])` with a separate cwd, returns exit code/stdout/stderr; temp dirs removed in `tearDown()`), and the relative-path test; see it fail. Then add `Log::setFile()`, the destination lookup and directory creation (D7, D8), `Log::usesErrorLog()`, and the `init()` tail calling `Log::setFile()` (no resolution for `''`/`php`). Add `tests/LogTest.php` following `tests/util/EnvTest.php` (temp files, `$_ENV` cleanup, reset `Log::setFile(null)` and the `error_log` ini in `tearDown()`).
 - **Test seam:** fixture process (`SPLTest`); `Log` public static API (`LogTest`).
 - **Edge cases:** `APP_LOG_FILE=php` -> `error_log()`, no file; absolute path unchanged; unset -> `error_log()`.
 - **Deliverable:** after `init()` a relative `APP_LOG_FILE` is written under `SPL_ROOT`, its directory created.
 - **Verify:** `vendor/bin/phpunit tests/LogTest.php tests/SPLTest.php` passes (relative-path test failed before the fix); `composer check` passes.
-- **Outcome:**
+- **Outcome:** `Log::setFile()`/`usesErrorLog()`/`destination()`/`isErrorLog()` and directory creation in src/Log.php; `init()` now calls `Log::setFile()` and no longer turns `php` into `SPL_ROOT/php`. Before the fix `testRelativeLogFileResolvesAgainstRootAndCreatesDirectory` and `testAbsoluteLogFileIsUsedAsIs` failed (file missing); after, `phpunit tests/LogTest.php tests/SPLTest.php` OK (11 tests) and `composer check` OK (71 tests).
 
 ### [ ] M2 — CLI errors reach STDERR once, with a safe fallback
 
