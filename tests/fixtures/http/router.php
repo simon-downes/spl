@@ -6,6 +6,12 @@
 
 $path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
 
+// /r301, /r302, /r303, /r307 redirect to /echo with that status
+if (preg_match('~^/r(30[1237])$~', $path, $matches)) {
+    header('Location: /echo', true, (int) $matches[1]);
+    return true;
+}
+
 switch ($path) {
 
     case '/json':
@@ -39,6 +45,20 @@ switch ($path) {
             'content_type' => $_SERVER['CONTENT_TYPE'] ?? '',
             'body'         => (string) file_get_contents('php://input'),
         ]);
+        break;
+
+    case '/form':
+        // PHP only parses POST bodies itself; other methods need request_parse_body()
+        header('Content-Type: application/json');
+        echo json_encode([
+            'method'       => $_SERVER['REQUEST_METHOD'],
+            'content_type' => explode(';', (string) ($_SERVER['CONTENT_TYPE'] ?? ''))[0],
+            'fields'       => $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : request_parse_body()[0],
+        ]);
+        break;
+
+    case '/to-ftp':
+        header('Location: ftp://127.0.0.1:1/x', true, 302);
         break;
 
     case '/redirect':

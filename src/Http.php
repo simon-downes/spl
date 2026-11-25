@@ -42,11 +42,14 @@ class Http {
 
     /**
      * Default request options, overridable per request via `$options`:
-     * - connect_timeout: seconds allowed to establish the connection (int >= 0, 0 = no limit)
+     * - connect_timeout: seconds allowed to establish the connection (int >= 0; 0 means
+     *   libcurl's built-in connect timeout of 300 s, not "no limit")
      * - timeout: seconds allowed for the whole request (int >= 0, 0 = no limit)
-     * - follow_redirects: follow `Location` responses, up to MAX_REDIRECTS hops (bool)
+     * - follow_redirects: follow `Location` responses to http/https URLs, up to
+     *   MAX_REDIRECTS hops (bool)
      *
-     * request() also accepts a `json` option, which has no default; see request().
+     * A `null` value is rejected like any other wrong type; omit the key to use the
+     * default. request() also accepts a `json` option, which has no default; see request().
      */
     public const DEFAULTS = [
         'connect_timeout'  => 10,
@@ -133,8 +136,10 @@ class Http {
      * such as `100 Continue` and followed redirects are discarded. A body given with HEAD
      * is ignored.
      *
-     * When following redirects, curl switches POST to GET on 301/302/303 as browsers do,
-     * but re-sends PUT, DELETE, OPTIONS and other custom methods unchanged.
+     * When following redirects, only http and https targets are allowed. POST switches
+     * to GET (dropping the body) on 301/302/303, as browsers do, and stays POST with its
+     * body on 307/308. PUT, DELETE, OPTIONS and other custom methods keep their method
+     * and body on every redirect, including to another host.
      *
      * @param list<string> $headers Request headers, e.g. ['Accept: application/json']
      * @param string|array<string, mixed> $body Raw body string, or an array sent as multipart/form-data
@@ -168,7 +173,7 @@ class Http {
 
             $has_content_type = false;
             foreach ($headers as $header) {
-                $has_content_type = $has_content_type || str_starts_with(strtolower(ltrim($header)), 'content-type:');
+                $has_content_type = $has_content_type || str_starts_with(strtolower($header), 'content-type:');
             }
 
             if (!$has_content_type) {
@@ -190,6 +195,14 @@ class Http {
         if ($settings['follow_redirects']) {
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_MAXREDIRS, static::MAX_REDIRECTS);
+            // a redirect must not lead to ftp://, file:// or other non-HTTP services
+            if (defined('CURLOPT_REDIR_PROTOCOLS_STR')) {
+                curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS_STR, 'http,https');
+            }
+            else {
+                // PHP built against libcurl < 7.85 only has the bitmask form
+                curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+            }
         }
 
         if (!empty($headers)) {
@@ -211,6 +224,11 @@ class Http {
             // a body makes curl send POST, so even GET needs the method set explicitly
             if ($method !== static::GET || $has_body) {
                 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+                // curl keeps a custom method on redirects but drops the body on
+                // 301/302/303 unless told to re-send it
+                if ($settings['follow_redirects']) {
+                    curl_setopt($ch, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
+                }
             }
             if ($has_body) {
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
@@ -330,9 +348,10 @@ class Http {
             }
         }
 
-        $connect_timeout  = $options['connect_timeout'] ?? static::DEFAULTS['connect_timeout'];
-        $timeout          = $options['timeout'] ?? static::DEFAULTS['timeout'];
-        $follow_redirects = $options['follow_redirects'] ?? static::DEFAULTS['follow_redirects'];
+        // array_key_exists rather than ??, so an explicit null is validated (and rejected)
+        $connect_timeout  = array_key_exists('connect_timeout', $options) ? $options['connect_timeout'] : static::DEFAULTS['connect_timeout'];
+        $timeout          = array_key_exists('timeout', $options) ? $options['timeout'] : static::DEFAULTS['timeout'];
+        $follow_redirects = array_key_exists('follow_redirects', $options) ? $options['follow_redirects'] : static::DEFAULTS['follow_redirects'];
 
         if (!is_int($connect_timeout) || $connect_timeout < 0) {
             throw new InvalidArgumentException("Http option 'connect_timeout' must be a non-negative integer (seconds)");

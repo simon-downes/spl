@@ -28,9 +28,16 @@ final class HttpTest extends TestCase {
         $port = self::freePort();
         self::startServer('continue', [PHP_BINARY, "{$fixtures}/continue-server.php", (string) $port], $port);
 
+        // stop the servers even if the run dies before tearDownAfterClass()
+        register_shutdown_function(self::stopServers(...));
+
     }
 
     public static function tearDownAfterClass(): void {
+        self::stopServers();
+    }
+
+    public static function stopServers(): void {
 
         foreach (self::$servers as $process) {
             proc_terminate($process);
@@ -128,10 +135,10 @@ final class HttpTest extends TestCase {
 
     public function testInterimContinueResponseIsDiscarded(): void {
 
-        // libcurl sends "Expect: 100-continue" for bodies over 1 MiB
-        $body = str_repeat('x', 2 * 1024 * 1024);
+        // the continue server answers 400 unless the request carries Expect: 100-continue
+        $body = str_repeat('x', 64 * 1024);
 
-        $response = Http::post(self::url('continue', '/upload'), ['Content-Type: text/plain'], $body);
+        $response = Http::post(self::url('continue', '/upload'), ['Content-Type: text/plain', 'Expect: 100-continue'], $body);
 
         $this->assertSame(201, $response->status_code);
         $this->assertSame('Created', $response->status_message);
@@ -189,6 +196,9 @@ final class HttpTest extends TestCase {
             'string connect timeout'   => [['connect_timeout' => '5']],
             'negative connect timeout' => [['connect_timeout' => -1]],
             'non-bool redirects'       => [['follow_redirects' => 1]],
+            'null timeout'             => [['timeout' => null]],
+            'null connect timeout'     => [['connect_timeout' => null]],
+            'null redirects'           => [['follow_redirects' => null]],
         ];
     }
 
@@ -219,6 +229,30 @@ final class HttpTest extends TestCase {
         catch (RuntimeException $e) {
             $this->assertSame(CURLE_OPERATION_TIMEDOUT, $e->getCode());
             $this->assertStringStartsWith('Curl error: ', $e->getMessage());
+        }
+
+        $this->assertLessThan(2.0, microtime(true) - $start);
+
+    }
+
+    public function testDefaultsAreAppliedWithoutOptions(): void {
+
+        // a subclass with a 1 s default timeout proves request() reads static::DEFAULTS
+        $http = new class extends Http {
+            public const DEFAULTS = ['connect_timeout' => 1, 'timeout' => 1, 'follow_redirects' => false];
+
+            public function __construct() {}
+        };
+
+        $url   = self::url('router', '/slow');
+        $start = microtime(true);
+
+        try {
+            $http::get($url);
+            $this->fail('Expected the request to time out');
+        }
+        catch (RuntimeException $e) {
+            $this->assertSame(CURLE_OPERATION_TIMEDOUT, $e->getCode());
         }
 
         $this->assertLessThan(2.0, microtime(true) - $start);
@@ -264,6 +298,71 @@ final class HttpTest extends TestCase {
 
     }
 
+    public static function redirectStatusProvider(): array {
+        return ['301' => [301], '302' => [302], '303' => [303], '307' => [307]];
+    }
+
+    #[DataProvider('redirectStatusProvider')]
+    public function testFollowedRedirectKeepsCustomMethodAndBody(int $status): void {
+
+        $response = Http::put(self::url('router', "/r{$status}"), ['Content-Type: text/plain'], 'payload', ['follow_redirects' => true]);
+
+        $this->assertSame(['method' => 'PUT', 'content_type' => 'text/plain', 'body' => 'payload'], $response->json());
+
+    }
+
+    public static function postRedirectProvider(): array {
+        return [
+            '301' => [301, 'GET', ''],
+            '302' => [302, 'GET', ''],
+            '303' => [303, 'GET', ''],
+            '307' => [307, 'POST', 'payload'],
+        ];
+    }
+
+    #[DataProvider('postRedirectProvider')]
+    public function testFollowedRedirectSwitchesPostToGetExceptOn307(int $status, string $method, string $body): void {
+
+        $response = Http::post(self::url('router', "/r{$status}"), ['Content-Type: text/plain'], 'payload', ['follow_redirects' => true]);
+
+        $this->assertSame($method, $response->json()['method']);
+        $this->assertSame($body, $response->json()['body']);
+
+    }
+
+    public function testRedirectToNonHttpProtocolIsRejected(): void {
+
+        $url   = self::url('router', '/to-ftp');
+        $start = microtime(true);
+
+        try {
+            Http::get($url, options: ['follow_redirects' => true]);
+            $this->fail('Expected the ftp:// redirect to be rejected');
+        }
+        catch (RuntimeException $e) {
+            $this->assertSame(CURLE_UNSUPPORTED_PROTOCOL, $e->getCode());
+        }
+
+        $this->assertLessThan(1.0, microtime(true) - $start);
+
+    }
+
+    public static function multipartMethodProvider(): array {
+        return ['post' => ['post', 'POST'], 'put' => ['put', 'PUT']];
+    }
+
+    #[DataProvider('multipartMethodProvider')]
+    public function testArrayBodyIsSentAsMultipart(string $helper, string $method): void {
+
+        $response = Http::$helper(self::url('router', '/form'), [], ['name' => 'spl', 'n' => '1']);
+
+        $this->assertSame(
+            ['method' => $method, 'content_type' => 'multipart/form-data', 'fields' => ['name' => 'spl', 'n' => '1']],
+            $response->json(),
+        );
+
+    }
+
     public function testJsonOptionEncodesBodyAndSetsContentType(): void {
 
         $response = Http::post(self::url('router', '/echo'), options: ['json' => ['a' => 1, 'b' => [true, null]]]);
@@ -283,6 +382,15 @@ final class HttpTest extends TestCase {
             ['method' => 'PUT', 'content_type' => 'application/vnd.x+json', 'body' => '{"a":1}'],
             $response->json(),
         );
+
+    }
+
+    public function testJsonOptionIgnoresMalformedContentTypeHeader(): void {
+
+        // a header with leading whitespace isn't a Content-Type header, so the json default applies
+        $response = Http::post(self::url('router', '/echo'), [' Content-Type: text/x'], options: ['json' => ['a' => 1]]);
+
+        $this->assertSame('application/json', $response->json()['content_type']);
 
     }
 

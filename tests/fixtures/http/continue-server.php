@@ -5,6 +5,11 @@
  * `php -S` never sends interim responses, so this server answers requests carrying
  * `Expect: 100-continue` with `HTTP/1.1 100 Continue` before reading the body, then
  * replies `201 Created` with an `X-Final: yes` header and the received byte count.
+ * A request without `Expect: 100-continue` gets `400 Bad Request`, so a test can't
+ * pass without exercising the interim response.
+ *
+ * The server exits once its parent process is gone, so it can't outlive a killed
+ * test run.
  *
  * Usage: php continue-server.php <port>
  */
@@ -17,9 +22,12 @@ if ($server === false) {
     exit(1);
 }
 
-while (true) {
+$parent = function_exists('posix_getppid') ? posix_getppid() : null;
 
-    $conn = stream_socket_accept($server, 3600);
+while ($parent === null || posix_getppid() === $parent) {
+
+    // short accept timeout so the parent check above runs every second
+    $conn = @stream_socket_accept($server, 1);
 
     if ($conn === false) {
         continue;
@@ -33,9 +41,13 @@ while (true) {
 
     $length = preg_match('/^content-length:\s*(\d+)/mi', $head, $matches) ? (int) $matches[1] : 0;
 
-    if (preg_match('/^expect:\s*100-continue/mi', $head)) {
-        fwrite($conn, "HTTP/1.1 100 Continue\r\n\r\n");
+    if (!preg_match('/^expect:\s*100-continue/mi', $head)) {
+        fwrite($conn, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        fclose($conn);
+        continue;
     }
+
+    fwrite($conn, "HTTP/1.1 100 Continue\r\n\r\n");
 
     // read the body
     $received = 0;
