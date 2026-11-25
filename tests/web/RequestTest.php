@@ -119,6 +119,36 @@ final class RequestTest extends TestCase {
         $this->assertSame('abc', $request->getCookie('session'));
     }
 
+    public function testFromGlobalsReadsUnprefixedContentHeaders(): void {
+        // Apache and other CGI-style SAPIs expose these without the HTTP_ prefix
+        $this->setServer([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI'    => '/api',
+            'CONTENT_TYPE'   => 'application/json; charset=utf-8',
+            'CONTENT_LENGTH' => '7',
+        ]);
+
+        $request = Request::fromGlobals();
+
+        $this->assertSame('application/json; charset=utf-8', $request->getHeader('content-type'));
+        $this->assertSame('7', $request->getHeader('content-length'));
+    }
+
+    public function testFromGlobalsPrefersHttpContentHeaders(): void {
+        $this->setServer([
+            'REQUEST_URI'         => '/api',
+            'CONTENT_TYPE'        => 'text/plain',
+            'HTTP_CONTENT_TYPE'   => 'application/json',
+            'CONTENT_LENGTH'      => '1',
+            'HTTP_CONTENT_LENGTH' => '2',
+        ]);
+
+        $request = Request::fromGlobals();
+
+        $this->assertSame('application/json', $request->getHeader('content-type'));
+        $this->assertSame('2', $request->getHeader('content-length'));
+    }
+
     private function makeRequest(): Request {
         return new Request(
             'POST',
@@ -240,13 +270,37 @@ final class RequestTest extends TestCase {
     }
 
     /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function emptyJsonBodyProvider(): array {
+        return [
+            'GET empty'         => ['GET', ''],
+            'GET whitespace'    => ['GET', " \r\n\t"],
+            'DELETE empty'      => ['DELETE', ''],
+            'POST empty'        => ['POST', ''],
+            'PUT whitespace'    => ['PUT', '  '],
+        ];
+    }
+
+    #[DataProvider('emptyJsonBodyProvider')]
+    public function testEmptyJsonBodyIsNoBody(string $method, string $body): void {
+        // API clients often send a JSON content-type on every request, including bodiless ones
+        $request = new Request($method, 'example.com', '/list', query: ['page' => '2'], body: $body, headers: ['Content-Type' => 'application/json']);
+
+        $this->assertSame(10, $request->lookup('limit', 10));
+        $this->assertSame('2', $request->lookup('page'));
+        $this->assertSame($body, $request->getBody());
+    }
+
+    /**
      * @return array<string, array{0: string}>
      */
     public static function badJsonProvider(): array {
         return [
-            'invalid'    => ['{bad'],
-            'empty'      => [''],
-            'whitespace' => ['  '],
+            'invalid'          => ['{bad'],
+            'truncated'        => ['{"a":'],
+            'leading space'    => [' {bad'],
+            'control char'     => ["\0"],
         ];
     }
 

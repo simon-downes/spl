@@ -45,6 +45,13 @@ class Request {
             }
         }
 
+        // Apache and other CGI-style SAPIs only provide these without the HTTP_ prefix
+        foreach (['CONTENT_TYPE' => 'CONTENT-TYPE', 'CONTENT_LENGTH' => 'CONTENT-LENGTH'] as $k => $name) {
+            if (isset($_SERVER[$k]) && !isset($headers[$name])) {
+                $headers[$name] = $_SERVER[$k];
+            }
+        }
+
         $body = $_POST;
 
         if (empty($body)) {
@@ -76,6 +83,9 @@ class Request {
      * Origin-form URIs (starting with "/") are parsed against a dummy origin so that
      * paths such as "/a:1" or "//a/b" aren't mistaken for a port or a host.
      * Returns "/" if no path can be determined.
+     *
+     * Note that parse_url() replaces ASCII control characters with "_", so a raw
+     * "/a\x01b" becomes "/a_b" (percent-encoded "%01" is left as is).
      */
     protected static function parsePath(string $uri): string {
 
@@ -142,8 +152,9 @@ class Request {
      * Looks up a value in query parameters first, then request body.
      *
      * The body is only read (and decoded if JSON) when the key isn't in the query.
+     * Returns the default if the body isn't an array (e.g. empty, raw or scalar JSON).
      *
-     * @throws WebException 400 Bad Request if the body is JSON and can't be decoded
+     * @throws WebException 400 Bad Request if the body is JSON and is invalid
      */
     public function lookup(string $k, mixed $default = null): mixed {
 
@@ -162,15 +173,17 @@ class Request {
      *
      * A string body with an application/json media type (parameters such as charset
      * are ignored) is decoded on the first call, objects as associative arrays, and
-     * the decoded value is returned from then on.
+     * the decoded value is returned from then on. An empty or whitespace-only body
+     * counts as no body and is returned as is, whatever the content-type.
      *
-     * @throws WebException 400 Bad Request if the body is JSON and is empty or invalid
+     * @throws WebException 400 Bad Request if the body is JSON and is invalid
      */
     public function getBody(): mixed {
 
         if (!$this->body_decoded) {
 
-            if (is_string($this->body) && $this->isJson()) {
+            // only JSON's own whitespace characters, so a body like "\0" is still invalid JSON
+            if (is_string($this->body) && trim($this->body, " \t\n\r") !== '' && $this->isJson()) {
                 try {
                     $this->body = json_decode($this->body, true, flags: JSON_THROW_ON_ERROR);
                 }
