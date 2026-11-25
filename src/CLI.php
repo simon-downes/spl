@@ -6,6 +6,9 @@
 
 namespace spl;
 
+use Closure;
+use ReflectionFunction;
+use ReflectionNamedType;
 use RuntimeException;
 
 /**
@@ -369,8 +372,7 @@ class CLI {
      *
      * Commands are loaded from config/commands.php under SPL_ROOT, which must return an array
      * of command names mapped to arrays with a `description` (string) and a `handler`
-     * (callable receiving the parsed options and the remaining positional arguments, and
-     * returning an exit code from 0 to 255, or null for 0):
+     * (callable receiving the parsed options and the remaining positional arguments):
      *
      * ```php
      * 'users:list' => [
@@ -379,13 +381,18 @@ class CLI {
      * ],
      * ```
      *
+     * A handler's return value is used as the exit code only when the handler declares an
+     * `int` or `?int` return type: it must then be from 0 to 255, and null means 0. Handlers
+     * with no return type, or any other one, exit with 0 whatever they return, so an arrow
+     * function such as `fn() => DB::execute(...)` doesn't exit with its row count.
+     *
      * A built-in `help` command lists the commands with their descriptions and runs when no
      * command is given; a `help` entry in the commands file replaces it. An unknown command
      * writes an error to STDERR and exits with 1.
      *
      * @param array<int, string> $argv Command line arguments (typically $argv)
      *
-     * @throws RuntimeException If the commands file is missing or invalid, or a handler returns an invalid exit code
+     * @throws RuntimeException If the commands file is missing or invalid, or an int-typed handler returns an exit code outside 0-255
      */
     public static function handle(array $argv): never {
         exit(static::dispatch($argv, SPL_ROOT . '/config/commands.php'));
@@ -394,9 +401,12 @@ class CLI {
     /**
      * Run the command named by the first positional argument and return its exit code.
      *
+     * The exit code is the handler's return value if it declares an `int` or `?int` return
+     * type (null means 0), and 0 otherwise; see handle().
+     *
      * @param array<int, string> $argv Command line arguments (typically $argv)
      *
-     * @throws RuntimeException If the commands file is missing or invalid, or the handler returns an invalid exit code
+     * @throws RuntimeException If the commands file is missing or invalid, or an int-typed handler returns an exit code outside 0-255
      */
     protected static function dispatch(array $argv, string $commands_file): int {
         static::parseArgs($argv);
@@ -417,17 +427,20 @@ class CLI {
         $name = static::$args[0] ?? 'help';
 
         if (!isset($commands[$name])) {
-            static::printError("Error: Unknown command '{$name}'");
-            static::printError("Run 'help' to see available commands.");
+            static::printError("Error: Unknown command '{$name}'", "Run 'help' to see available commands.");
             return 1;
         }
 
         // Remove command name from arguments
         array_shift(static::$args);
 
-        $code = ($commands[$name]['handler'])(static::$options, static::$args);
+        $handler = $commands[$name]['handler'];
 
-        if ($code === null) {
+        $code = $handler(static::$options, static::$args);
+
+        // only handlers that declare an int return type set the exit code, so an untyped
+        // arrow function doesn't exit with whatever its expression returns
+        if ($code === null || !static::returnsExitCode($handler)) {
             return 0;
         }
 
@@ -438,6 +451,16 @@ class CLI {
         }
 
         return $code;
+    }
+
+    /**
+     * Determine if a handler declares an `int` or `?int` (`int|null`) return type.
+     */
+    protected static function returnsExitCode(callable $handler): bool {
+        // a closure made from any callable (function, method, invokable object) reports its return type
+        $type = (new ReflectionFunction(Closure::fromCallable($handler)))->getReturnType();
+
+        return $type instanceof ReflectionNamedType && $type->getName() === 'int';
     }
 
     /**
@@ -463,8 +486,12 @@ class CLI {
         foreach ($entries as $name => $entry) {
             $invalid = fn(string $problem) => new RuntimeException("Invalid command '{$name}' in {$commands_file}: {$problem}");
 
-            if (!is_string($name) || $name === '') {
-                throw $invalid('name must be a non-empty string');
+            if (is_int($name)) {
+                throw $invalid("command names can't be numeric: PHP turns a key like '{$name}' into an integer (an entry with no name gets an integer key too)");
+            }
+
+            if ($name === '') {
+                throw $invalid('name must not be empty');
             }
 
             if (!is_array($entry)) {
@@ -509,13 +536,20 @@ class CLI {
     }
 
     /**
-     * Write a line to STDERR, in red if colours are enabled for STDERR (see useColours()).
+     * Write an error line to STDERR, in red if colours are enabled for STDERR (see useColours()),
+     * optionally followed by a hint line that is never coloured.
      *
-     * The message is written literally; it is not searched for formatting tokens.
+     * Both are written literally; they are not searched for formatting tokens.
      */
-    protected static function printError(string $message): void {
+    protected static function printError(string $message, string $hint = ''): void {
         $stream = static::$stderr ?? STDERR;
 
-        fwrite($stream, static::style($message, 'red', static::useColours($stream)) . PHP_EOL);
+        $text = static::style($message, 'red', static::useColours($stream)) . PHP_EOL;
+
+        if ($hint !== '') {
+            $text .= $hint . PHP_EOL;
+        }
+
+        fwrite($stream, $text);
     }
 }

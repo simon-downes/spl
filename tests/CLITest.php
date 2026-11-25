@@ -6,7 +6,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use spl\CLI;
-use ValueError;
 
 final class CLITest extends TestCase {
 
@@ -28,6 +27,7 @@ final class CLITest extends TestCase {
     protected function tearDown(): void {
         putenv($this->no_color === false ? 'NO_COLOR' : "NO_COLOR={$this->no_color}");
         CLIHarness::setStreams();
+        CLIHarness::$terminals = null;
 
         foreach (array_reverse($this->paths) as $path) {
             is_dir($path) ? rmdir($path) : unlink($path);
@@ -67,12 +67,19 @@ final class CLITest extends TestCase {
     /**
      * Run the commands in a commands file and return the exit code and what was written to STDERR.
      *
+     * Colours follow the real check (off, as NO_COLOR is set) unless STDOUT or STDERR is named as a colour terminal.
+     *
      * @param array<int, string> $argv
+     * @param array<int, 'stdout'|'stderr'> $terminals
      * @return array{int, string}
      */
-    private function dispatch(string $file, array $argv): array {
+    private function dispatch(string $file, array $argv, array $terminals = []): array {
         $stderr = $this->stream();
         CLIHarness::setStreams(null, $stderr);
+
+        if ($terminals !== []) {
+            CLIHarness::$terminals = array_map(fn(string $name) => $name === 'stdout' ? STDOUT : $stderr, $terminals);
+        }
 
         $code = CLIHarness::dispatch($argv, $file);
 
@@ -128,14 +135,14 @@ final class CLITest extends TestCase {
         // so the child buffers its own output and sends it to a STDERR pipe
         $code = "require {$autoload}; ob_start(); {$code}; fwrite(STDERR, (string) ob_get_clean());";
 
-        try {
-            $process = proc_open([PHP_BINARY, '-r', $code], [0 => ['pipe', 'r'], 1 => ['pty'], 2 => ['pipe', 'w']], $pipes, null, $env);
-        }
-        catch (ValueError $e) {
-            $this->markTestSkipped($e->getMessage());
+        // without pty support (no openpty(), e.g. Windows) or when no pty can be opened (e.g. no devpts
+        // in a sandbox) proc_open() warns and returns false
+        $process = @proc_open([PHP_BINARY, '-r', $code], [0 => ['pipe', 'r'], 1 => ['pty'], 2 => ['pipe', 'w']], $pipes, null, $env);
+
+        if ($process === false) {
+            $this->markTestSkipped('Cannot run a child process on a pty: ' . (error_get_last()['message'] ?? 'proc_open() failed'));
         }
 
-        $this->assertIsResource($process);
         fclose($pipes[0]);
         $output = stream_get_contents($pipes[2]);
         fclose($pipes[2]);
@@ -316,18 +323,57 @@ final class CLITest extends TestCase {
         $this->assertSame([0, ''], $this->dispatch($file, ['cli', 'quiet']));
     }
 
+    public static function typedHandler(array $options, array $args): int {
+        return 8;
+    }
+
+    public static function untypedHandler(array $options, array $args) {
+        return 8;
+    }
+
+    public static function exitCodeProvider(): array {
+        return [
+            'untyped arrow fn'       => ['fn(array $options, array $args) => 5', 0],
+            'untyped closure'        => ['function () { return 5; }', 0],
+            'untyped string result'  => ["fn() => 'x'", 0],
+            'untyped out of range'   => ['fn() => 300', 0],
+            'int'                    => ['fn(array $options, array $args): int => 3', 3],
+            'nullable int'           => ['fn(array $options, array $args): ?int => 4', 4],
+            'nullable int null'      => ['fn(array $options, array $args): ?int => null', 0],
+            'int or null'            => ['fn(): int|null => 255', 255],
+            'void'                   => ['function (): void {}', 0],
+            'mixed'                  => ['fn(): mixed => 5', 0],
+            'string'                 => ["fn(): string => '5'", 0],
+            'int or string'          => ['fn(): int|string => 5', 0],
+            'invokable object'       => ['new class { public function __invoke(array $options, array $args): int { return 6; } }', 6],
+            'untyped invokable'      => ['new class { public function __invoke(array $options, array $args) { return 6; } }', 0],
+            'object method'          => ["[new class { public function run(): ?int { return 7; } }, 'run']", 7],
+            'static method string'   => ["'spl\\tests\\CLITest::typedHandler'", 8],
+            'untyped static method'  => ['[spl\tests\CLITest::class, \'untypedHandler\']', 0],
+        ];
+    }
+
+    /**
+     * A handler's result is its exit code only when it declares an int or ?int return type.
+     */
+    #[DataProvider('exitCodeProvider')]
+    public function testExitCodeHonouredOnlyForIntReturnType(string $handler, int $code): void {
+        $file = $this->commandsFile("'run' => ['description' => 'Run', 'handler' => {$handler}],");
+
+        $this->assertSame([$code, ''], $this->dispatch($file, ['cli', 'run']));
+    }
+
     public static function invalidExitCodeProvider(): array {
         return [
-            'string'   => ["'x'", 'got string'],
-            'too big'  => ['256', 'got 256'],
-            'negative' => ['-1', 'got -1'],
-            'bool'     => ['true', 'got bool'],
+            'too big'          => ['fn(): int => 300', 'got 300'],
+            'just too big'     => ['fn(): ?int => 256', 'got 256'],
+            'negative'         => ['fn(): int => -1', 'got -1'],
         ];
     }
 
     #[DataProvider('invalidExitCodeProvider')]
-    public function testInvalidExitCodeThrows(string $value, string $got): void {
-        $file = $this->commandsFile("'bad' => ['description' => 'Bad', 'handler' => fn() => {$value}],");
+    public function testInvalidExitCodeThrows(string $handler, string $got): void {
+        $file = $this->commandsFile("'bad' => ['description' => 'Bad', 'handler' => {$handler}],");
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage("Command 'bad' must return null or an exit code from 0 to 255, {$got}");
@@ -345,6 +391,56 @@ final class CLITest extends TestCase {
         );
     }
 
+    public static function unknownCommandColourProvider(): array {
+        return [
+            'stderr is a terminal' => [['stderr'], "\033[31mError: Unknown command 'nope'\033[0m\nRun 'help' to see available commands.\n"],
+            'only stdout is'       => [['stdout'], "Error: Unknown command 'nope'\nRun 'help' to see available commands.\n"],
+        ];
+    }
+
+    /**
+     * Colours for the error depend on STDERR, not STDOUT, and only the error line is red.
+     *
+     * @param array<int, 'stdout'|'stderr'> $terminals
+     */
+    #[DataProvider('unknownCommandColourProvider')]
+    public function testUnknownCommandColoursFollowStderr(array $terminals, string $stderr): void {
+        $file = $this->commandsFile("'ok' => ['description' => 'Ok', 'handler' => fn() => null],");
+        $this->expectOutputString('');
+
+        $this->assertSame([1, $stderr], $this->dispatch($file, ['cli', 'nope'], $terminals));
+    }
+
+    public function testHelpHighlightsNamesOnColourTerminal(): void {
+        $file = $this->commandsFile("'go' => ['description' => 'Go [bold]now[reset]', 'handler' => fn() => null],");
+        $this->expectOutputString(
+            "Available commands:\n"
+            . "  \033[32mgo  \033[0m  Go \033[1mnow\033[0m\n"
+            . "  \033[32mhelp\033[0m  List available commands\n",
+        );
+
+        $this->assertSame([0, ''], $this->dispatch($file, ['cli'], ['stdout']));
+    }
+
+    public function testSelectHighlightsDefaultOnColourTerminal(): void {
+        CLIHarness::setStreams($this->stream("\n"));
+        CLIHarness::$terminals = [STDOUT];
+        $this->expectOutputString(
+            "\033[1mPick\033[0m\n  [r] Red\n  [\033[96mred\033[0m] \033[31mCrimson\033[0m\n"
+            . "Enter choice [\033[96mred\033[0m]: ",
+        );
+
+        $this->assertSame('red', CLIHarness::select('[bold]Pick[reset]', ['r' => 'Red', 'red' => '[red]Crimson[reset]'], 'red'));
+    }
+
+    public function testPromptHighlightsDefaultOnColourTerminal(): void {
+        CLIHarness::setStreams($this->stream("\n"));
+        CLIHarness::$terminals = [STDOUT];
+        $this->expectOutputString("Style [\033[96mbold\033[0m]: ");
+
+        $this->assertSame('bold', CLIHarness::prompt('Style', 'bold'));
+    }
+
     public static function invalidEntryProvider(): array {
         return [
             'missing handler'      => ["'bad' => ['description' => 'Bad'],", "Invalid command 'bad'", "'handler' must be callable"],
@@ -352,7 +448,9 @@ final class CLITest extends TestCase {
             'missing description'  => ["'bad' => ['handler' => fn() => null],", "Invalid command 'bad'", "'description' must be a string"],
             'integer description'  => ["'bad' => ['description' => 5, 'handler' => fn() => null],", "Invalid command 'bad'", "'description' must be a string"],
             'bare callable'        => ["'bad' => fn() => null,", "Invalid command 'bad'", "entry must be an array with 'description' and 'handler' keys"],
-            'integer key'          => ["['description' => 'Bad', 'handler' => fn() => null],", "Invalid command '0'", 'name must be a non-empty string'],
+            'empty name'           => ["'' => ['description' => 'Bad', 'handler' => fn() => null],", "Invalid command ''", 'name must not be empty'],
+            'numeric string name'  => ["'2024' => ['description' => 'Bad', 'handler' => fn() => null],", "Invalid command '2024'", "command names can't be numeric: PHP turns a key like '2024' into an integer (an entry with no name gets an integer key too)"],
+            'integer key'          => ["['description' => 'Bad', 'handler' => fn() => null],", "Invalid command '0'", "command names can't be numeric: PHP turns a key like '0' into an integer (an entry with no name gets an integer key too)"],
         ];
     }
 
@@ -392,7 +490,8 @@ final class CLITest extends TestCase {
         return [
             'exit code' => [['three'], 3, 'three ran', ''],
             'null'      => [['none'], 0, '', ''],
-            'help'      => [[], 0, "Available commands:\n  help   List available commands\n  none   None\n  three  Three\n", ''],
+            'untyped'   => [['print'], 0, "hi\n", ''],
+            'help'      => [[], 0, "Available commands:\n  help   List available commands\n  none   None\n  print  Print\n  three  Three\n", ''],
             'unknown'   => [['nope'], 1, '', "Error: Unknown command 'nope'\nRun 'help' to see available commands.\n"],
         ];
     }
@@ -405,6 +504,7 @@ final class CLITest extends TestCase {
         $result = $this->runHandle(<<<'PHP'
             'three' => ['description' => 'Three', 'handler' => function (array $options, array $args): ?int { echo 'three ran'; return 3; }],
             'none' => ['description' => 'None', 'handler' => fn(array $options, array $args): ?int => null],
+            'print' => ['description' => 'Print', 'handler' => fn(array $options, array $args) => print("hi\n")],
             PHP, $args);
 
         $this->assertSame([$code, $stdout, $stderr], $result);
