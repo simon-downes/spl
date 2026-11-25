@@ -173,8 +173,8 @@ the exit code.
 
 Delivered all three milestones in src/CLI.php with tests/CLITest.php (42 tests) and tests/CLIHarness.php. Final `composer check`: cs clean, PHPStan 0 errors, 102 tests / 279 assertions pass; CLITest also passes when phpunit itself runs in a pty (`script -qec`). Manual end-to-end run through `SPL::run()` recorded under M3. Not verified: the pty tests on macOS (they skip if `proc_open()` has no pty support). No SPL.php change was needed.
 
-PR: pending
-CI: pending
+PR: https://github.com/simon-downes/spl/pull/9
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
