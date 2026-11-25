@@ -191,7 +191,7 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 `SPL::init()` now resolves `APP_LOG_FILE` against `SPL_ROOT` and hands it to `Log::setFile()`, and registers exception, shutdown and (debug-only) error handlers; `SPL::error()` writes the trace to STDERR in the CLI unless the log already went there, and falls back to `error_log()` if logging fails; the error page escapes all exception data. Evidence: `composer check` OK (cs 0 files, PHPStan 0 errors, 92 tests / 313 assertions); manual `php -S` checks and browser before/after screenshots (M4, M5 Outcomes). Not verified: the fatal-during-`SPL::error()` guard; behaviour under php-fpm/Apache (only `php -S` and CLI were run).
 
-PR: pending
+PR: https://github.com/simon-downes/spl/pull/7
 CI: pending
 
 ## Follow-ups
