@@ -170,8 +170,8 @@ comment per D6 and trim) → interpolate unless single-quoted.
 
 Delivered all six scoped fixes (M1-M3). Evidence: every new bug test failed on the base first (recorded per milestone), and the final `composer check` passes: php-cs-fixer clean, PHPStan 0 errors, PHPUnit OK (85 tests, 182 assertions; base had 60). Non-CLI `SPL_CLI` verified manually under the built-in server SAPI (`false cli-server`). Not verified: FPM/Apache/phpdbg SAPIs (no binaries in the container; same `PHP_SAPI` check).
 
-PR: pending
-CI: pending
+PR: https://github.com/simon-downes/spl/pull/8
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
