@@ -50,7 +50,9 @@ final class SPLRenderTest extends TestCase {
 
         SPL::init($this->root, false);
 
+        // the legacy directory exists and holds the template, so only the default path can fail
         $this->expectException(LoaderError::class);
+        $this->expectExceptionMessage('The "' . $this->root . '/templates" directory does not exist');
         SPL::render('hello.html');
     }
 
