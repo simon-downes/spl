@@ -188,6 +188,14 @@ final class EnvTest extends TestCase {
         $this->assertSame('plain', Env::get('SPL_TEST_CRLF_PLAIN'));
     }
 
+    public function testLoadThrowsForUndefinedReference(): void {
+        $this->writeEnv(['SPL_TEST_BROKEN="${SPL_TEST_UNDEFINED}"']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("Undefined environment variable: 'SPL_TEST_UNDEFINED'");
+        Env::load($this->file);
+    }
+
     public function testGetReturnsEnvironmentValuesVerbatim(): void {
         $_ENV['SPL_TEST_RAW'] = '"kept"';
 

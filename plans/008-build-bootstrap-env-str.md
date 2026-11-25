@@ -1,6 +1,6 @@
 # 008 — Bootstrap, Env parser, Str and Debug fixes
 
-Status: reviewing
+Status: done
 Branch: build-it/008-bootstrap-env-str (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/008-bootstrap-env-str
 
@@ -108,7 +108,7 @@ comment per D6 and trim) → interpolate unless single-quoted.
 
 ### Code structure
 
-- src/util/Env.php: `safeLoad()` handles line-level rules; `parseValue()` handles value rules and interpolation; `get()` loses the quote regex. Docblocks updated.
+- src/util/Env.php: `safeLoad()` handles line-level rules; `parseValue()` handles value rules and calls a new protected `interpolate()` for `${VAR}` (protected, not private, because the class calls its helpers through `static::`); `get()` loses the quote regex. Docblocks updated.
 - src/bootstrap.php: one-line `SPL_CLI` change.
 - src/SPL.php: `render()` config key and its docblock line only.
 - src/Str.php: `uncamelise()` regexes; delete `xssClean()` and its docblock.
@@ -163,12 +163,18 @@ comment per D6 and trim) → interpolate unless single-quoted.
 ## Review
 
 - Plan review: 1 pass, self-conducted (no subagent tool available in this session) against references/PLAN-REVIEW.md. ⚠️ M3/Requirements AC `caféBar → café_bar` was wrong (camel splitting is ASCII-only, so `éB` never splits) — changed to `café-Bar` and recorded the limitation under Risks. ℹ️ double-negative wording of the overwrite MUST — reworded. ℹ️ merge-conflict exposure in tests/StrTest.php and the SPLRenderTest dependency on `SPL::init()` — added to Risks. No ❌, so no second pass.
-- Code review:
-- Merge risk:
+- Code review: 1 round, roles `general` and `risk` (risk applies: env-file input, public library APIs and a config key), both self-conducted against references/CODE-REVIEW.md because no subagent tool is available in this session. Findings: ℹ️ the moved undefined-`${VAR}` error path had no test — added `testLoadThrowsForUndefinedReference` (`composer check`: OK, 85 tests, 182 assertions; PHPStan 0 errors; cs clean). ℹ️ plan Code structure didn't mention the new `interpolate()` helper — updated. Risk pass: no shell/SQL/secrets; the quoted-value regex is lazy but anchored and runs once per env line (developer-controlled, short), no ReDoS concern; breaking changes (xssClean removal, `twig.templates` ignored, `Env::get()` no longer unquoting, quoted `"true"` converted) are listed in the PR. Considered and rejected: making `interpolate()` private (would break `static::` calls from subclasses).
+- Merge risk: Medium: consumers relying on `twig.templates`, `Str::xssClean()` or `Env::get()` unquoting real-environment values break, but the first two fail loudly (Twig `LoaderError`, undefined-method error) and all are listed under Breaking changes; the parser changes are covered by 11 new EnvTest cases.
 
 ## Outcome
+
+Delivered all six scoped fixes (M1-M3). Evidence: every new bug test failed on the base first (recorded per milestone), and the final `composer check` passes: php-cs-fixer clean, PHPStan 0 errors, PHPUnit OK (85 tests, 182 assertions; base had 60). Non-CLI `SPL_CLI` verified manually under the built-in server SAPI (`false cli-server`). Not verified: FPM/Apache/phpdbg SAPIs (no binaries in the container; same `PHP_SAPI` check).
 
 PR: pending
 CI: pending
 
 ## Follow-ups
+
+- Phase 3 docs: AGENTS.md/README still list `Str::xssClean()` and describe env-file syntax and `Env::get()` quote stripping.
+- `Str::uncamelise()` camel-case splitting is ASCII-only (`caféBar` → `cafébar`).
+- Env files: no escape sequences or multi-line values.
