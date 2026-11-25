@@ -1,6 +1,6 @@
 # 008 — Bootstrap, Env parser, Str and Debug fixes
 
-Status: building
+Status: reviewing
 Branch: build-it/008-bootstrap-env-str (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/008-bootstrap-env-str
 
@@ -139,13 +139,13 @@ comment per D6 and trim) → interpolate unless single-quoted.
 - **Verify:** `vendor/bin/phpunit tests/BootstrapTest.php tests/SPLRenderTest.php` passes (fails on master first); manual cli-server check prints `false`; `composer check` passes.
 - **Outcome:** tests/BootstrapTest.php (2 tests) and tests/SPLRenderTest.php (3 separate-process tests) added; before the fix the closed-STDIN test got `'false'`, the template_path test raised `LoaderError: ".../templates" directory does not exist` and the legacy-key test didn't throw. After: `vendor/bin/phpunit tests/BootstrapTest.php tests/SPLRenderTest.php` OK (5 tests). Manual: `php -S 127.0.0.1:18765 router.php` + `curl` printed `false cli-server`. PHPStan then reported `if.alwaysTrue`/`booleanNot.alwaysFalse` at SPL.php:140/173 because it evaluated `PHP_SAPI` as `cli`; fixed by listing `SPL_CLI` under `dynamicConstantNames` in phpstan.neon (a config fact, not an ignore). `composer check`: OK (73 tests), PHPStan 0 errors.
 
-### [ ] M3 — Str::uncamelise fixed, xssClean removed, Debug ASCII label
+### [x] M3 — Str::uncamelise fixed, xssClean removed, Debug ASCII label
 
 - **Approach:** add `uncamelProvider` + `testUncamelise`, `testXssCleanRemoved`, `testStripControlChars`, `testNormaliseLineEndings` to tests/StrTest.php (after the existing tests, clear of any parseURL tests the db-dsn lane adds) and string-label tests to tests/util/DebugTest.php; see them fail; then fix `uncamelise()` (D9), delete `xssClean()`, and change `getString()` (D10).
 - **Test seam:** `Str::uncamelise()`, `Str` class methods, `(new Debug())->toString()`.
 - **Deliverable:** the Str and Debug ACs hold.
 - **Verify:** `vendor/bin/phpunit tests/StrTest.php tests/util/DebugTest.php` passes; `composer check` passes.
-- **Outcome:**
+- **Outcome:** Added `testUncamelise` (6 cases), `testXssCleanIsRemoved`, `testStripControlChars`, `testNormaliseLineEndings` and two Debug label tests. Before the fix 5 failed (e.g. `'hello_world foo-bar'`, `'string(3; UTF-8) "abc"'`, xssClean present). Separator regex is now `/[^\p{L}\p{N}]+/u`, first regex `([A-Z]+)`, `xssClean()` deleted (no other src/tests callers; AGENTS.md mentions it, left for the Phase 3 docs PR), `getString()` checks ASCII first. `vendor/bin/phpunit tests/StrTest.php tests/util/DebugTest.php` OK (35 tests); `composer check` OK (84 tests, 179 assertions), PHPStan 0 errors, cs clean.
 
 ## Deviations
 
