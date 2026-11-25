@@ -261,7 +261,7 @@ Not verified: the connect timeout firing (needs a blackholed address) and the 30
 total timeout elapsing (verified by reading `request()` only).
 
 PR: https://github.com/simon-downes/spl/pull/6
-CI: pending
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
