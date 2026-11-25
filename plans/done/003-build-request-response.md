@@ -235,6 +235,6 @@ non-`php -S` SAPIs (FPM/Apache), which populate REQUEST_URI/HTTP_HOST the same w
 docs but weren't run.
 
 PR: https://github.com/simon-downes/spl/pull/3
-CI: pending
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
