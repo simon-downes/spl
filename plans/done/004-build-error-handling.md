@@ -191,7 +191,7 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ### Independent review (post-PR)
 
-Review: general + risk roles on fcd7a53...5c5e42b (no ❌/⚠️; four ℹ️, two ❓). All findings fixed; none rejected.
+Review: general + risk roles on fcd7a53...5c5e42b (no ❌/⚠️; six ℹ️, two ❓). All findings fixed; none rejected.
 
 - ℹ️ `SPL::error()` docblock overstated the `error_log()` fallback: fixed by qualifying it (the fallback only happens when the log write throws, i.e. in debug mode; outside debug mode only PHP's warning reports the failure). `Log::message()` still doesn't throw on a failed write (user decision).
 - ℹ️ "empty or `php` means `error_log()`" written twice: `Log::isErrorLog()` is now public `@internal` and `SPL::init()` uses it.
