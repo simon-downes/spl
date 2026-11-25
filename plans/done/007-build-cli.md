@@ -1,6 +1,6 @@
 # 007 — CLI colours, end of input, exit codes and generated help
 
-Status: reviewing
+Status: done
 Branch: build-it/007-cli (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/007-cli
 
@@ -166,10 +166,19 @@ the exit code.
 ## Review
 
 - Plan review: one self-conducted pass (no subagent tool in this session) against PLAN-REVIEW.md. Fixed: ⚠️ D3 `$_ENV ?? getenv` would let an `EGPCS` php.ini snapshot override test `putenv()` (now `getenv()` only); ⚠️ child runner depended on `SPL::init()`, which another PR owns (now defines `SPL_ROOT`); ℹ️ no AC for the literal prompt default (D5) or for ignored extra keys (D14) (added); ℹ️ no edge case for a token-like unknown command name (added to M3). No ❌, so no second pass.
+- Code review: `general` and `risk` (the diff changes a public library API, the commands.php file format, process exit codes and STDERR output), one round each, self-conducted as separate passes against CODE-REVIEW.md (no subagent tool in this session). Fixed: ℹ️ `printError()` docblock said "in red if STDERR is a terminal" but `NO_COLOR` also applies (reworded). Checked and not a finding: `exit()` inside `SPL::run()`'s try isn't caught (PHP 8.4 exit isn't a Throwable); `expectOutputString('')` is still verified when an expected exception is thrown (confirmed with a throwaway test), so the invalid-entry tests do prove no handler runs; temp files are removed in tearDown in reverse creation order; echoing a user-typed command name literally to STDERR only reaches the user's own terminal. Risk noted for the PR: arrow-function handlers now leak their implicit return value into the exit code (e.g. `fn() => DB::execute(...)` returns a row count, `fn() => true` throws), covered by the Breaking changes section. Spec check: every MUST traces to a test in tests/CLITest.php (colours: `testTerminalOutputReplacesOnlyKnownTokens`, `testNoColorDisablesColoursOnTerminal`; tokens: `testPrintlnLeaves...`, `testSelectListsOptionKeysLiterally`; EOF: prompt/confirm/select EOF tests; exit codes: `testHandleExitsWithCommandExitCode`, `testInvalidExitCodeThrows`; format: `testInvalidEntryThrowsBeforeAnyCommandRuns`; help: `testBuiltInHelp...`, `testUserDefinedHelpReplacesBuiltIn`; STDERR: `testUnknownCommandWritesToStderr`) and `grep posix_ src/CLI.php` is empty.
+- Merge risk: Medium: every consumer's `config/commands.php` and any code relying on `handle()` returning breaks until updated, but it fails loudly (a validation error naming the entry, exit 1) and only on the CLI entry point; web requests don't touch this code.
 
 ## Outcome
+
+Delivered all three milestones in src/CLI.php with tests/CLITest.php (42 tests) and tests/CLIHarness.php. Final `composer check`: cs clean, PHPStan 0 errors, 102 tests / 279 assertions pass; CLITest also passes when phpunit itself runs in a pty (`script -qec`). Manual end-to-end run through `SPL::run()` recorded under M3. Not verified: the pty tests on macOS (they skip if `proc_open()` has no pty support). No SPL.php change was needed.
 
 PR: pending
 CI: pending
 
 ## Follow-ups
+
+- A public method for handlers to print errors to STDERR (e.g. `CLI::error()`), so commands can follow the same convention.
+- `select()` compares the default to option keys with `===`, so an int key `1` with default `'1'` (or vice versa) isn't highlighted, and it returns the typed input as a string even for int keys (pre-existing).
+- `-h`/`--help` options could alias the `help` command.
+- Numeric-string command names (`'123'`) become int array keys and are rejected as non-string names; the message could say so.

@@ -509,7 +509,7 @@ class CLI {
     }
 
     /**
-     * Write a line to STDERR, in red if STDERR is a terminal.
+     * Write a line to STDERR, in red if colours are enabled for STDERR (see useColours()).
      *
      * The message is written literally; it is not searched for formatting tokens.
      */
