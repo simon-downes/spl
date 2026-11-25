@@ -7,6 +7,7 @@ use InvalidArgumentException;
 use JsonException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use RuntimeException;
 use spl\web\Response;
 use spl\web\WebException;
@@ -177,6 +178,37 @@ final class ResponseTest extends TestCase {
 
         $this->assertNull($response->getCookie('s'));
         $this->assertSame([], $response->getCookies());
+    }
+
+    public function testCookieOptionsPassedToSetcookie(): void {
+        // send() can't be observed in CLI (headers_list() is always empty), so test the options it passes
+        $response = Response::text('x')->setCookie('s', 'v', 60, '/app', 'example.com', true, false, 'strict');
+
+        $cookie = $response->getCookie('s');
+        $this->assertIsArray($cookie);
+
+        $options = (new ReflectionMethod(Response::class, 'cookieOptions'))->invoke(null, $cookie);
+
+        $this->assertSame([
+            'expires'  => $cookie['expires'],
+            'path'     => '/app',
+            'domain'   => 'example.com',
+            'secure'   => true,
+            'httponly' => false,
+            'samesite' => 'Strict',
+        ], $options);
+
+        $defaults = Response::text('x')->setCookie('s', 'v')->getCookie('s');
+        $this->assertIsArray($defaults);
+
+        $this->assertSame([
+            'expires'  => 0,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => false,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ], (new ReflectionMethod(Response::class, 'cookieOptions'))->invoke(null, $defaults));
     }
 
 }

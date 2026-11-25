@@ -341,18 +341,29 @@ class Response {
         }
 
         foreach ($this->cookies as $name => $cookie) {
-            setcookie($name, $cookie['value'], [
-                'expires'  => $cookie['expires'],
-                'path'     => $cookie['path'],
-                'domain'   => $cookie['domain'],
-                'secure'   => $cookie['secure'],
-                'httponly' => $cookie['httponly'],
-                'samesite' => $cookie['samesite'],
-            ]);
+            setcookie($name, $cookie['value'], static::cookieOptions($cookie));
         }
 
         echo $this->body;
 
+    }
+
+    /**
+     * Builds the setcookie() options array for a stored cookie.
+     *
+     * @param array{value: string, expires: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Strict'|'Lax'|'None'} $cookie
+     *
+     * @return array{expires: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Strict'|'Lax'|'None'}
+     */
+    protected static function cookieOptions(array $cookie): array {
+        return [
+            'expires'  => $cookie['expires'],
+            'path'     => $cookie['path'],
+            'domain'   => $cookie['domain'],
+            'secure'   => $cookie['secure'],
+            'httponly' => $cookie['httponly'],
+            'samesite' => $cookie['samesite'],
+        ];
     }
 
 }
