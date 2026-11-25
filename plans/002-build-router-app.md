@@ -1,6 +1,6 @@
 # 002 — Router fixes: method prefixes, HEAD, named parameters, handler return types
 
-Status: building
+Status: reviewing
 Branch: build-it/002-router-app (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/002-router-app
 
