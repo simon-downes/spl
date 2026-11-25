@@ -194,6 +194,20 @@ final class SPLTest extends TestCase {
         ];
     }
 
+    public function testDebugWebRequestWithoutQueryStringIsNotAnError(): void {
+        // php -S leaves QUERY_STRING unset when the URL has no query string
+        $code = <<<'PHP'
+            SPL::init(__DIR__);
+            $_SERVER = ['REQUEST_METHOD' => 'GET', 'HTTP_HOST' => 'localhost', 'REQUEST_URI' => '/path'];
+            echo \spl\web\Request::fromGlobals()->getPath();
+            PHP;
+
+        $result = $this->runFixture($code, ['APP_DEBUG' => 'true']);
+
+        $this->assertSame(0, $result['exit'], $result['stderr']);
+        $this->assertSame('/path', $result['stdout']);
+    }
+
     public function testHandleErrorThrowsErrorException(): void {
         $level = error_reporting(E_ALL);
 

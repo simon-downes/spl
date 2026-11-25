@@ -23,8 +23,10 @@ class Request {
 
         $query = [];
 
-        if ($_SERVER['QUERY_STRING']) {
-            parse_str($_SERVER['QUERY_STRING'], $query);
+        $query_string = $_SERVER['QUERY_STRING'] ?? '';
+
+        if ($query_string) {
+            parse_str($query_string, $query);
         }
 
         $headers = [];
@@ -50,7 +52,7 @@ class Request {
         return new static(
             $_SERVER['REQUEST_METHOD'],
             $_SERVER['HTTP_HOST'],
-            str_replace('?' . $_SERVER['QUERY_STRING'], '', $_SERVER['REQUEST_URI']),
+            str_replace('?' . $query_string, '', $_SERVER['REQUEST_URI']),
             $query,
             $body,
             $headers,

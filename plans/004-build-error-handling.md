@@ -168,7 +168,11 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 - M4: D13 reversed: no 32 KB memory reserve. The out-of-memory fixture passes without it, so it would be untestable dead code. No scope change.
 
+- M4 (manual web check): with the new debug error handler every `php -S` request without a query string returned 500, because `Request::fromGlobals()` read the unset `$_SERVER['QUERY_STRING']` (src/web/Request.php:26, request-response lane). Added the smallest fix (`?? ''`) and `SPLTest::testDebugWebRequestWithoutQueryStringIsNotAnError` (failed before). Scope: one-line touch in another lane, listed in the PR under "Touches other areas".
+
 ## Risks
+
+- The debug error handler turns any existing warning/notice/deprecation in app code, other SPL code or libraries into a 500/exit 1. Only the `QUERY_STRING` one was found by the manual web check; others may surface (by design, D1).
 
 - PHP's own fatal output (`display_errors`/`log_errors`) still appears alongside SPL's handling; ini settings are out of scope.
 - In non-debug mode a failing log write is only a PHP warning, so the error may be missing from the log file (it still reaches STDERR in the CLI).
