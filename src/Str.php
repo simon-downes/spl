@@ -191,7 +191,7 @@ class Str {
     public static function uncamelise(string $str): string {
         return mb_strtolower(
             (string) preg_replace(
-                '/[^\p{L}\p{N}]+/u',
+                '/[^\p{L}\p{M}\p{N}]+/u',
                 '_',
                 (string) preg_replace(
                     '/([a-z\d])([A-Z])/u',

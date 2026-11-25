@@ -69,6 +69,8 @@ final class StrTest extends TestCase {
             'already snake'        => ['already_snake', 'already_snake'],
             'separator runs'       => ['a -- b..c', 'a_b_c'],
             'unicode letters kept' => ['café-Bar', 'café_bar'],
+            'nfd marks kept'       => ["cafe\u{0301}-Bar", "cafe\u{0301}_bar"],
+            'nfd not split'        => ["re\u{0301}sume\u{0301}Draft", "re\u{0301}sume\u{0301}draft"],
             'digits'               => ['version2Beta', 'version2_beta'],
         ];
     }
