@@ -7,6 +7,7 @@
 namespace spl;
 
 use DateTimeInterface;
+use ErrorException;
 use Throwable;
 use LogicException;
 
@@ -29,6 +30,16 @@ use Twig\Environment as TwigEnvironment;
 class SPL {
 
     /**
+     * Error types that stop the script and can only be seen from a shutdown function.
+     */
+    protected const int FATAL_ERRORS = E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR | E_RECOVERABLE_ERROR;
+
+    /**
+     * Set while error() is handling an error, so a failure inside it isn't handled recursively.
+     */
+    protected static bool $handling = false;
+
+    /**
      * Cannot be instantiated.
      */
     private function __construct() {}
@@ -38,6 +49,10 @@ class SPL {
      *
      * Sets SPL_ROOT and SPL_DEBUG constants and loads environment variables.
      * SPL_DEBUG is determined from APP_DEBUG or APP_ENV environment variables.
+     * A relative APP_LOG_FILE is resolved against SPL_ROOT and becomes the default log destination.
+     *
+     * Registers handlers so uncaught exceptions and fatal errors go to error() and, in debug mode,
+     * PHP warnings, notices and deprecations are thrown as ErrorException.
      */
     public static function init(string $directory = '', bool $load_env = true): void {
 
@@ -67,10 +82,21 @@ class SPL {
 
         $log_file = (string) env('APP_LOG_FILE', '');
 
-        // not an absolute path so make it relative to the root directory
-        if ($log_file && substr($log_file, 0, 1) != '/') {
+        // a relative path is made relative to the root directory, unless it means error_log()
+        if (!Log::isErrorLog($log_file) && !static::isAbsolutePath($log_file)) {
             $log_file = SPL_ROOT . '/' . $log_file;
         }
+
+        Log::setFile($log_file);
+
+        // in debug mode PHP warnings, notices and deprecations become exceptions
+        if (SPL_DEBUG) {
+            set_error_handler([static::class, 'handleError']);
+        }
+
+        set_exception_handler([static::class, 'handleException']);
+
+        register_shutdown_function([static::class, 'handleShutdown']);
 
     }
 
@@ -156,27 +182,143 @@ class SPL {
     /**
      * Handles errors by logging them and displaying appropriate output.
      *
-     * For CLI requests, only logs the error.
-     * For web requests, displays an error page and logs the error.
+     * The error is logged at ERROR level. For web requests an error page is displayed.
+     * For CLI requests the formatted error is also written to STDERR, unless the log already
+     * went there (error_log() with no error_log ini setting).
+     *
+     * If writing the log throws (in debug mode, where the write failure's warning becomes an
+     * ErrorException) the error goes to error_log() instead. Outside debug mode a failed write is
+     * only reported by PHP's own warning. If handling the error fails, or an error occurs while
+     * one is being handled, a one-line summary goes to error_log().
      *
      * Will exit the application with the provided exit code unless exit is 0.
      */
     public static function error(Throwable $error, int $exit = 1): void {
 
-        $trace = (new Debug())->toString($error);
+        // something failed while we were handling an error so keep it simple
+        if (static::$handling) {
+            error_log(static::summary($error));
+        }
+        else {
 
-        // log the error
-        Log::error($trace);
+            static::$handling = true;
 
-        // for cli scripts we've already logged the error to the correct place
-        // but for web pages we need to return something to the user
-        if (!SPL_CLI) {
-            require __DIR__ . '/error.php';
+            try {
+                static::report($error);
+            }
+            catch (Throwable $e) {
+                error_log(static::summary($error) . ' (error handling failed: ' . static::summary($e) . ')');
+            }
+            finally {
+                static::$handling = false;
+            }
+
         }
 
         if ($exit) {
             exit($exit);
         }
+
+    }
+
+    /**
+     * Error handler registered by init() in debug mode.
+     *
+     * Throws errors included in error_reporting() as ErrorException. Others, including those
+     * suppressed with @, are left to PHP's standard handling.
+     *
+     * @internal
+     *
+     * @throws ErrorException
+     */
+    public static function handleError(int $severity, string $message, string $file = '', int $line = 0): bool {
+
+        if (!(error_reporting() & $severity)) {
+            return false;
+        }
+
+        throw new ErrorException($message, 0, $severity, $file, $line);
+
+    }
+
+    /**
+     * Exception handler registered by init(); passes uncaught exceptions to error().
+     *
+     * @internal
+     */
+    public static function handleException(Throwable $error): void {
+
+        static::error($error);
+
+    }
+
+    /**
+     * Shutdown function registered by init(); passes fatal errors (out of memory, time limit
+     * exceeded, etc.) to error() as an ErrorException.
+     *
+     * Doesn't exit, so PHP keeps its exit status and later shutdown functions still run.
+     *
+     * @internal
+     */
+    public static function handleShutdown(): void {
+
+        $error = error_get_last();
+
+        if ($error === null || !($error['type'] & static::FATAL_ERRORS)) {
+            return;
+        }
+
+        static::error(new ErrorException($error['message'], 0, $error['type'], $error['file'], $error['line']), 0);
+
+    }
+
+    /**
+     * Logs an error and outputs it to the user (error page or STDERR).
+     */
+    protected static function report(Throwable $error): void {
+
+        $trace = (new Debug())->toString($error);
+
+        $to_error_log = Log::usesErrorLog('ERROR');
+
+        try {
+            Log::error($trace);
+        }
+        catch (Throwable $e) {
+            // couldn't write to the log so fall back to PHP's error log
+            error_log($trace);
+            error_log('Unable to write log: ' . $e->getMessage());
+            $to_error_log = true;
+        }
+
+        // web pages need to return something to the user
+        if (!SPL_CLI) {
+            require __DIR__ . '/error.php';
+        }
+        // in the CLI, error_log() writes to the terminal when the error_log ini setting is empty
+        elseif (!$to_error_log || ini_get('error_log') !== '') {
+            fwrite(STDERR, $trace . "\n");
+        }
+
+    }
+
+    /**
+     * Returns a one-line description of an error.
+     */
+    protected static function summary(Throwable $error): string {
+
+        return sprintf('%s: %s in %s:%d', get_class($error), $error->getMessage(), $error->getFile(), $error->getLine());
+
+    }
+
+    /**
+     * Checks if a path is absolute: starts with / or \, or a Windows drive such as C:\ or C:/.
+     *
+     * The leading \ also covers UNC paths (\\server\share).
+     */
+    protected static function isAbsolutePath(string $path): bool {
+
+        return (bool) preg_match('#^([/\\\\]|[a-z]:[/\\\\])#i', $path);
 
     }
 
