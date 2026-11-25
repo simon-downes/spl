@@ -1,6 +1,6 @@
 # 006 — Harden the HTTP client
 
-Status: building
+Status: reviewing
 Branch: build-it/006-http-client (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/006-http-client
 
