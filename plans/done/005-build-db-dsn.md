@@ -262,7 +262,7 @@ Not verified: behaviour against live MySQL, Postgres or SQL Server (only `makeDS
 a stubbed `getInfo()` are tested), including `PARAM_BOOL` on those drivers.
 
 PR: https://github.com/simon-downes/spl/pull/4
-CI: pending
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
