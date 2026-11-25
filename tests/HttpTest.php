@@ -2,6 +2,7 @@
 
 namespace spl\tests;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -159,6 +160,94 @@ final class HttpTest extends TestCase {
         $this->expectExceptionCode(CURLE_COULDNT_CONNECT);
 
         Http::get("http://127.0.0.1:{$port}/");
+
+    }
+
+    public function testDefaults(): void {
+        $this->assertSame(['connect_timeout' => 10, 'timeout' => 30, 'follow_redirects' => false], Http::DEFAULTS);
+    }
+
+    public static function invalidOptionsProvider(): array {
+        return [
+            'unknown key'              => [['timout' => 5]],
+            'string timeout'           => [['timeout' => '5']],
+            'float timeout'            => [['timeout' => 1.5]],
+            'negative timeout'         => [['timeout' => -1]],
+            'string connect timeout'   => [['connect_timeout' => '5']],
+            'negative connect timeout' => [['connect_timeout' => -1]],
+            'non-bool redirects'       => [['follow_redirects' => 1]],
+        ];
+    }
+
+    #[DataProvider('invalidOptionsProvider')]
+    public function testInvalidOptionsAreRejectedBeforeRequesting(array $options): void {
+
+        // a request would fail with RuntimeException, so this proves validation runs first
+        $this->expectException(InvalidArgumentException::class);
+
+        Http::get('http://127.0.0.1:1/', options: $options);
+
+    }
+
+    public function testEmptyMethodIsRejected(): void {
+        $this->expectException(InvalidArgumentException::class);
+        Http::request(' ', 'http://127.0.0.1:1/');
+    }
+
+    public function testTimeoutOptionAbortsSlowRequest(): void {
+
+        $url   = self::url('router', '/slow');
+        $start = microtime(true);
+
+        try {
+            Http::get($url, options: ['timeout' => 1]);
+            $this->fail('Expected the request to time out');
+        }
+        catch (RuntimeException $e) {
+            $this->assertSame(CURLE_OPERATION_TIMEDOUT, $e->getCode());
+            $this->assertStringStartsWith('Curl error: ', $e->getMessage());
+        }
+
+        $this->assertLessThan(2.0, microtime(true) - $start);
+
+    }
+
+    public function testRedirectsAreNotFollowedByDefault(): void {
+
+        $response = Http::get(self::url('router', '/redirect'));
+
+        $this->assertSame(302, $response->status_code);
+        $this->assertSame('/json', $response->headers['location']);
+        $this->assertSame('yes', $response->headers['x-redirect']);
+
+    }
+
+    public function testFollowedRedirectKeepsOnlyFinalHeaders(): void {
+
+        $response = Http::get(self::url('router', '/redirect'), options: ['follow_redirects' => true]);
+
+        $this->assertSame(200, $response->status_code);
+        $this->assertSame('application/json', $response->headers['content-type']);
+        $this->assertArrayNotHasKey('location', $response->headers);
+        $this->assertArrayNotHasKey('x-redirect', $response->headers);
+        $this->assertSame(['name' => 'spl', 'items' => [1, 2]], $response->json());
+
+    }
+
+    public function testRedirectLoopStopsAtMaxRedirects(): void {
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionCode(CURLE_TOO_MANY_REDIRECTS);
+
+        Http::get(self::url('router', '/loop'), options: ['follow_redirects' => true]);
+
+    }
+
+    public function testPostFollowingSeeOtherSwitchesToGet(): void {
+
+        $response = Http::post(self::url('router', '/see-other'), ['Content-Type: text/plain'], 'hello', ['follow_redirects' => true]);
+
+        $this->assertSame('GET', $response->json()['method']);
 
     }
 

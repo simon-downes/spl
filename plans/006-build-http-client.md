@@ -168,7 +168,7 @@ raw body.
   valid; no fixture processes left running. phpstan run with a private `tmpDir`
   (`-c /tmp/phpstan-006.neon`) because parallel agents corrupt the shared `/tmp/phpstan` cache.
 
-### [ ] M2 — Timeouts, options and opt-in redirects
+### [x] M2 — Timeouts, options and opt-in redirects
 
 - **Approach:** `DEFAULTS` const; validate `$options` (keys must exist in `DEFAULTS` or be
   `json`; timeouts non-negative int; `follow_redirects` bool); set
@@ -179,7 +179,13 @@ raw body.
 - **Edge cases:** typo key → `InvalidArgumentException`; `timeout => '5'` → `InvalidArgumentException`; loop → code 47.
 - **Deliverable:** a slow endpoint fails after the per-request timeout; redirects followed only on request.
 - **Verify:** `vendor/bin/phpunit tests/HttpTest.php` passes with the timeout test under 2 s; `composer check` passes.
-- **Outcome:**
+- **Outcome:** `Http::DEFAULTS` + `MAX_REDIRECTS` consts, private `resolveOptions()`,
+  `$options` on `request()` and all six helpers, timeouts set on every request,
+  `FOLLOWLOCATION`/`MAXREDIRS` when opted in. Tests: defaults, 7 invalid-option rows,
+  empty method, 1 s timeout (code 28, asserted < 2 s), redirect not followed by default,
+  followed redirect keeps final headers only, loop → code 47, POST → 303 arrives as GET.
+  `vendor/bin/phpunit tests/HttpTest.php`: 29 tests OK in 2.2 s; cs-check 0 files;
+  phpstan `[OK] No errors`; `composer test` 101 tests OK.
 
 ### [ ] M3 — JSON request bodies
 

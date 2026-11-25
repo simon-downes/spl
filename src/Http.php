@@ -16,10 +16,15 @@ use RuntimeException;
  * returned as HttpResponse objects holding the final response's status, headers and
  * raw body.
  *
+ * Every request has a connect and a total timeout (see DEFAULTS), which can be changed
+ * per request through the `$options` argument. Redirects are only followed when
+ * `follow_redirects` is true.
+ *
  * Usage:
  *   $response = Http::get('https://api.example.com/users');
  *   $users    = $response->json();
  *   $response = Http::post('https://api.example.com/users', ['Content-Type: text/plain'], 'John');
+ *   $response = Http::get('https://example.com/slow', options: ['timeout' => 60, 'follow_redirects' => true]);
  */
 class Http {
 
@@ -34,6 +39,23 @@ class Http {
     public const OPTIONS = 'OPTIONS';
 
     /**
+     * Default request options, overridable per request via `$options`:
+     * - connect_timeout: seconds allowed to establish the connection (int >= 0, 0 = no limit)
+     * - timeout: seconds allowed for the whole request (int >= 0, 0 = no limit)
+     * - follow_redirects: follow `Location` responses, up to MAX_REDIRECTS hops (bool)
+     */
+    public const DEFAULTS = [
+        'connect_timeout'  => 10,
+        'timeout'          => 30,
+        'follow_redirects' => false,
+    ];
+
+    /**
+     * Maximum number of redirects followed when `follow_redirects` is enabled.
+     */
+    public const MAX_REDIRECTS = 5;
+
+    /**
      * Helpers cannot be instantiated.
      */
     private function __construct() {}
@@ -42,18 +64,20 @@ class Http {
      * Makes a GET request.
      *
      * @param list<string> $headers Request headers, e.g. ['Accept: application/json']
+     * @param array<string, mixed> $options Request options, see DEFAULTS and request()
      */
-    public static function get(string $url, array $headers = []): HttpResponse {
-        return static::request(static::GET, $url, $headers);
+    public static function get(string $url, array $headers = [], array $options = []): HttpResponse {
+        return static::request(static::GET, $url, $headers, '', $options);
     }
 
     /**
      * Makes a HEAD request; the response body is always empty.
      *
      * @param list<string> $headers Request headers
+     * @param array<string, mixed> $options Request options, see DEFAULTS and request()
      */
-    public static function head(string $url, array $headers = []): HttpResponse {
-        return static::request(static::HEAD, $url, $headers);
+    public static function head(string $url, array $headers = [], array $options = []): HttpResponse {
+        return static::request(static::HEAD, $url, $headers, '', $options);
     }
 
     /**
@@ -61,9 +85,10 @@ class Http {
      *
      * @param list<string> $headers Request headers
      * @param string|array<string, mixed> $body Raw body string, or an array sent as multipart/form-data
+     * @param array<string, mixed> $options Request options, see DEFAULTS and request()
      */
-    public static function post(string $url, array $headers = [], string|array $body = ''): HttpResponse {
-        return static::request(static::POST, $url, $headers, $body);
+    public static function post(string $url, array $headers = [], string|array $body = '', array $options = []): HttpResponse {
+        return static::request(static::POST, $url, $headers, $body, $options);
     }
 
     /**
@@ -71,49 +96,59 @@ class Http {
      *
      * @param list<string> $headers Request headers
      * @param string|array<string, mixed> $body Raw body string, or an array sent as multipart/form-data
+     * @param array<string, mixed> $options Request options, see DEFAULTS and request()
      */
-    public static function put(string $url, array $headers = [], string|array $body = ''): HttpResponse {
-        return static::request(static::PUT, $url, $headers, $body);
+    public static function put(string $url, array $headers = [], string|array $body = '', array $options = []): HttpResponse {
+        return static::request(static::PUT, $url, $headers, $body, $options);
     }
 
     /**
      * Makes a DELETE request.
      *
      * @param list<string> $headers Request headers
+     * @param array<string, mixed> $options Request options, see DEFAULTS and request()
      */
-    public static function delete(string $url, array $headers = []): HttpResponse {
-        return static::request(static::DELETE, $url, $headers);
+    public static function delete(string $url, array $headers = [], array $options = []): HttpResponse {
+        return static::request(static::DELETE, $url, $headers, '', $options);
     }
 
     /**
      * Makes an OPTIONS request.
      *
      * @param list<string> $headers Request headers
+     * @param array<string, mixed> $options Request options, see DEFAULTS and request()
      */
-    public static function options(string $url, array $headers = []): HttpResponse {
-        return static::request(static::OPTIONS, $url, $headers);
+    public static function options(string $url, array $headers = [], array $options = []): HttpResponse {
+        return static::request(static::OPTIONS, $url, $headers, '', $options);
     }
 
     /**
      * Makes an HTTP request using cURL.
      *
      * Only the final response's status line and headers are returned: interim responses
-     * such as `100 Continue` are discarded. A body given with HEAD is ignored.
+     * such as `100 Continue` and followed redirects are discarded. A body given with HEAD
+     * is ignored.
+     *
+     * When following redirects, curl switches POST to GET on 301/302/303 as browsers do,
+     * but re-sends PUT, DELETE, OPTIONS and other custom methods unchanged.
      *
      * @param list<string> $headers Request headers, e.g. ['Accept: application/json']
      * @param string|array<string, mixed> $body Raw body string, or an array sent as multipart/form-data
+     * @param array<string, mixed> $options Overrides for DEFAULTS
      *
-     * @throws InvalidArgumentException If the method is empty
+     * @throws InvalidArgumentException If the method is empty or an option is unknown or invalid
      * @throws RuntimeException If the transfer fails (code is the cURL error number) or
      *                          the response has no status line
      */
-    public static function request(string $method, string $url, array $headers = [], string|array $body = ''): HttpResponse {
+    public static function request(string $method, string $url, array $headers = [], string|array $body = '', array $options = []): HttpResponse {
 
         $method = strtoupper(trim($method));
 
         if ($method === '') {
             throw new InvalidArgumentException('HTTP method cannot be empty');
         }
+
+        $options = self::resolveOptions($options);
 
         $ch = curl_init($url);
 
@@ -122,6 +157,13 @@ class Http {
         }
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $options['connect_timeout']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $options['timeout']);
+
+        if ($options['follow_redirects']) {
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_MAXREDIRS, static::MAX_REDIRECTS);
+        }
 
         if (!empty($headers)) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -239,6 +281,47 @@ class Http {
             'http_version'   => $matches[1],
             'status_code'    => (int) $matches[2],
             'status_message' => $matches[3] ?? '',
+        ];
+
+    }
+
+    /**
+     * Merges request options over DEFAULTS and validates them.
+     *
+     * @param array<string, mixed> $options
+     *
+     * @return array{connect_timeout: int, timeout: int, follow_redirects: bool}
+     *
+     * @throws InvalidArgumentException If an option is unknown or has the wrong type
+     */
+    private static function resolveOptions(array $options): array {
+
+        foreach (array_keys($options) as $key) {
+            if (!array_key_exists($key, self::DEFAULTS)) {
+                throw new InvalidArgumentException("Unknown Http option: {$key}");
+            }
+        }
+
+        $connect_timeout  = $options['connect_timeout'] ?? self::DEFAULTS['connect_timeout'];
+        $timeout          = $options['timeout'] ?? self::DEFAULTS['timeout'];
+        $follow_redirects = $options['follow_redirects'] ?? self::DEFAULTS['follow_redirects'];
+
+        if (!is_int($connect_timeout) || $connect_timeout < 0) {
+            throw new InvalidArgumentException("Http option 'connect_timeout' must be a non-negative integer (seconds)");
+        }
+
+        if (!is_int($timeout) || $timeout < 0) {
+            throw new InvalidArgumentException("Http option 'timeout' must be a non-negative integer (seconds)");
+        }
+
+        if (!is_bool($follow_redirects)) {
+            throw new InvalidArgumentException("Http option 'follow_redirects' must be a boolean");
+        }
+
+        return [
+            'connect_timeout'  => $connect_timeout,
+            'timeout'          => $timeout,
+            'follow_redirects' => $follow_redirects,
         ];
 
     }
