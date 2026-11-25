@@ -275,8 +275,8 @@ zero errors (7 known + 3 surfaced by stable PHPStan); 60-test PHPUnit suite; `co
 PHPUnit `OK (60 tests, 128 assertions)`); random-order runs pass. Not verified: PHP 8.5/8.6
 runtime (only 8.4.28 installed; those removals are documented no-ops).
 
-PR: pending
-CI: pending
+PR: https://github.com/simon-downes/spl/pull/2
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
