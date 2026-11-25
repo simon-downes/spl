@@ -180,6 +180,9 @@ final class RequestTest extends TestCase {
         $this->assertSame('John', $request->lookup('name'));
     }
 
+    /**
+     * @param array<string, string> $query
+     */
     private function makeJsonRequest(string $body, string $content_type = 'application/json', array $query = []): Request {
         return new Request('POST', 'example.com', '/api', query: $query, body: $body, headers: ['Content-Type' => $content_type]);
     }

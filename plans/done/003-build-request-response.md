@@ -1,6 +1,6 @@
 # 003 — Request and Response hardening
 
-Status: reviewing
+Status: done
 Branch: build-it/003-request-response (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/003-request-response
 
@@ -181,6 +181,10 @@ handler, where `App::handle()` already turns a WebException into a response.
 
 ## Deviations
 
+- M2: `lookup()` returns the default when the body isn't an array (before, a raw string body
+  was indexed as a string, so `lookup('0')` on body `abc` returned `a`). Follows from D15;
+  no scope change.
+
 ## Risks
 
 - Handlers that never read the body won't see a 400 for bad JSON (by design, D5).
@@ -197,8 +201,38 @@ handler, where `App::handle()` already turns a WebException into a response.
   (added); ℹ️ M1 claimed `$_POST` must be set to avoid php://input (not needed in CLI;
   reworded); ℹ️ SameSite=None without Secure unrecorded (added to Risks). No ❌, so no
   second pass.
+- Code review: 1 round, self-conducted (no subagent tool in this session) against
+  CODE-REVIEW.md in both roles over `git diff fcd7a53...HEAD` (5 files).
+  - `general`: ℹ️ test helper `makeJsonRequest()` lacked the `array<string, string>`
+    type for `$query` (fixed). Checked: `lookup()` ternary/`??` precedence, decode-once flag
+    stays unset on failure (tested), docblocks for constructor/getBody/lookup/setCookie
+    match behaviour, consumers of changed APIs in src/ (`SPL::run()` calls
+    `fromGlobals()`; App uses getPath/getMethod, `Response::html/json/fromThrowable`,
+    `isServerError`, `send`): none need changes.
+  - `risk` (run: external input and public library API): no findings in scope.
+    Checked: `http://localhost` prefix can't turn a path into authority/userinfo (authority
+    ends at the first `/` of the URI); samesite is whitelisted before reaching setcookie();
+    the 400 message only carries PHP's JSON error text; behaviour changes are listed as
+    breaking in the PR. Host-header trust and REQUEST_METHOD guarding are pre-existing and
+    out of scope.
+  - Spec check: every MUST traced to a passing test (RequestTest fromGlobals*/Json*/BadJson*/
+    Lookup*, ResponseTest AddedStatus*/Json*/FromThrowable*/ContentLength*/Cookie*) and the
+    `php -S` smoke test for the App-level 400 and Set-Cookie flags.
+- Merge risk: Medium: per-request public APIs change behaviour (cookies now HttpOnly by
+  default, bad JSON throws a 400 WebException from getBody()/lookup(), escaped error
+  messages), which can surprise existing apps; limited by being local to three classes,
+  covered by 106 tests plus a live smoke test, and easy to revert.
 
 ## Outcome
+
+Delivered M1-M4: robust `Request::fromGlobals()` (path via parse_url, no QUERY_STRING
+warning, host fallback), lazy media-type JSON decoding with 400 on empty/invalid JSON,
+Response 308/422/429, throwing `json()`, escaped `fromThrowable()`, string
+content-length, and cookie options with HttpOnly + SameSite=Lax defaults. Evidence:
+`composer check` (cs 0 fixable, phpstan 0 errors, 106 tests / 217 assertions OK) and the
+`php -S` smoke test recorded in M2/M4. Not verified: behaviour behind real proxies or
+non-`php -S` SAPIs (FPM/Apache), which populate REQUEST_URI/HTTP_HOST the same way per PHP
+docs but weren't run.
 
 PR: pending
 CI: pending
