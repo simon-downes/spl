@@ -1,6 +1,6 @@
 # 005 — DB DSN parsing, SQLite paths, typed binding and facade docblocks
 
-Status: planning
+Status: building
 Branch: build-it/005-db-dsn (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/005-db-dsn
 
@@ -63,7 +63,7 @@ Codebase facts:
 | D8  | buildURL with parseURL output | Skip components that are `null` or `''`; `rawurlencode` user and (when shown) pass | leave buildURL alone; also encode path/query | parseURL always fills missing parts with `''`, so today `buildURL(parseURL('mysql://h/db'))` gives `mysql://:<password>@h:/db`; now parseURL decodes credentials, buildURL must re-encode them to round-trip. Path encoding needs per-segment handling and no caller needs it | self |
 | D9  | getInfo fix | `!==` comparison | — | User-chosen | user |
 | D10 | Test seam for non-SQLite DSNs and getInfo's server-info branch | Anonymous `Connection` subclasses in the test: one overrides the constructor to expose `makeDSN()`; one replaces `$pdo` with a `PDO` subclass returning a fixed `ATTR_SERVER_INFO` and sets the DSN type to `mysql` | install MariaDB/Postgres in the container | The repo's tests run against SQLite only; a real server can't be assumed | self |
-| D11 | Guard against DB docblock drift | Reflection test: the `@method static` names on `DB` equal `Connection`'s public non-static methods (minus `__construct`) | no test | Forwarded methods are added to `Connection` over time; a missing tag fails silently in IDEs/PHPStan | self |
+| D11 | Guard against DB docblock drift | Reflection test: the `@method static` tags on `DB` list exactly `Connection`'s public non-static methods (minus `__construct`), each with the same parameter names in order | no test | Forwarded methods are added to `Connection` over time; a missing tag fails silently in IDEs/PHPStan | self |
 
 ## Requirements
 
@@ -80,7 +80,7 @@ Codebase facts:
 - MUST decode `host` and `path` once (`/my%20db` → `/my db`).
   - AC: StrTest case.
 - MUST open an absolute SQLite path from `sqlite:///abs/path.db`, unprefixed even when `SPL_ROOT` is defined.
-  - AC: ConnectionTest writes a row through `sqlite://<tempfile>`, reads it back through a second Connection, and `getDSN()->pdo === 'sqlite:<tempfile>'`.
+  - AC: ConnectionTest writes a row through `'sqlite://' . $tempfile` (an absolute path, so the URL starts `sqlite:///`), reads it back through a second Connection, and `getDSN()->pdo === 'sqlite:<tempfile>'`.
   - AC: separate-process test with `SPL_ROOT` defined gives the same unprefixed `pdo`.
 - MUST keep `sqlite://localhost/rel/path.db` relative to `SPL_ROOT` when defined.
   - AC: separate-process test defines `SPL_ROOT` as a temp dir; the database file is created at `SPL_ROOT/rel.db`.
@@ -154,7 +154,9 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   host is `''` (db = path as parsed); otherwise relative (db = trimmed path, prefixed with
   `SPL_ROOT/` when defined). Keep the empty-db check on the trimmed path. Separate-process tests
   use `#[RunInSeparateProcess]` and define `SPL_ROOT` inside the test body; temp files/dirs are
-  removed in the test or tearDown.
+  removed in the test or tearDown. ⚠️ The `:memory:` + `SPL_ROOT` test points `SPL_ROOT` at a
+  directory that doesn't exist, so the pre-fix code fails with a `PDOException` instead of
+  creating a stray `:memory:` file.
 - **Test seam:** `new Connection($url)`, `getDSN()`, `Str::parseURL()`.
 - **Edge cases:** `sqlite:///` → "No database name specified"; `sqlite:///tmp/my%20db.db` → `/tmp/my db.db`.
 - **Deliverable:** `sqlite:///var/data/app.db` opens that file; `:memory:` stays in memory with `SPL_ROOT` defined.
@@ -199,6 +201,13 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 - MySQL/Postgres/SQL Server DSN paths are only checked through `makeDSN()`; no live server.
 
 ## Review
+
+- Plan review: 1 pass, self-conducted (no subagent tool in this session) against
+  references/PLAN-REVIEW.md. Fixed: ⚠️ M2 pre-fix `:memory:` test could create a stray file
+  (now uses a nonexistent `SPL_ROOT`); ℹ️ absolute-path AC didn't say the URL form; ℹ️ D11
+  checked names only, not "matching parameters" (now compares parameter names). Verified codebase
+  claims: `parse_url('http://:80')` is false, `file:///` already parses, only `makeDSN()` calls
+  `parseURL()`, `src/Log.php:17-21` holds the `@method static` pattern. No ❌, so no second pass.
 
 ## Outcome
 
