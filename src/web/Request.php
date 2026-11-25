@@ -23,8 +23,10 @@ class Request {
 
         $query = [];
 
-        if ($_SERVER['QUERY_STRING']) {
-            parse_str($_SERVER['QUERY_STRING'], $query);
+        $query_string = (string) ($_SERVER['QUERY_STRING'] ?? '');
+
+        if ($query_string !== '') {
+            parse_str($query_string, $query);
         }
 
         $headers = [];
@@ -49,8 +51,8 @@ class Request {
 
         return new static(
             $_SERVER['REQUEST_METHOD'],
-            $_SERVER['HTTP_HOST'],
-            str_replace('?' . $_SERVER['QUERY_STRING'], '', $_SERVER['REQUEST_URI']),
+            (string) ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? ''),
+            static::parsePath((string) ($_SERVER['REQUEST_URI'] ?? '')),
             $query,
             $body,
             $headers,
@@ -58,6 +60,21 @@ class Request {
             $_SERVER['REMOTE_ADDR'] ?? '',
             $auth ? ['auth' => $auth] : [],
         );
+
+    }
+
+    /**
+     * Extracts the path component of a request URI, without query string or fragment.
+     *
+     * Origin-form URIs (starting with "/") are parsed against a dummy origin so that
+     * paths such as "/a:1" or "//a/b" aren't mistaken for a port or a host.
+     * Returns "/" if no path can be determined.
+     */
+    protected static function parsePath(string $uri): string {
+
+        $path = parse_url(str_starts_with($uri, '/') ? "http://localhost{$uri}" : $uri, PHP_URL_PATH);
+
+        return is_string($path) && $path !== '' ? $path : '/';
 
     }
 

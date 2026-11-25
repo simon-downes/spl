@@ -128,7 +128,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 
 ## Milestones
 
-### [ ] M1 — fromGlobals handles missing server vars and parses the path
+### [x] M1 — fromGlobals handles missing server vars and parses the path
 
 - **Approach:** in `Request::fromGlobals()` use `$_SERVER['QUERY_STRING'] ?? ''`,
   host `HTTP_HOST ?? SERVER_NAME ?? ''`, and the D11 path parsing with `/` fallback for a
@@ -140,7 +140,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Edge cases:** `/a?` -> `/a`; `/a:1` -> `/a:1`; `//x/y` -> `//x/y`; missing REQUEST_URI -> `/`.
 - **Deliverable:** fromGlobals() works with a minimal `$_SERVER`.
 - **Verify:** `vendor/bin/phpunit tests/web/RequestTest.php` passes with no warnings; full checks pass.
-- **Outcome:**
+- **Outcome:** `fromGlobals()` defaults QUERY_STRING to `''`, host to HTTP_HOST/SERVER_NAME/`''`, and uses new `Request::parsePath()`. New tests failed first (TypeError on null host, "Undefined array key QUERY_STRING" warning), then `composer check`: cs 0, phpstan 0 errors, 76 tests OK.
 
 ### [ ] M2 — Lazy JSON body decoding with 400 on bad JSON
 
