@@ -1,6 +1,6 @@
 # 001 — PHP 8.4 floor, stable tooling and a minimal PHPUnit baseline
 
-Status: planning
+Status: building
 Branch: build-it/001-php84-test-baseline (base: master @ 98cb6cf)
 Worktree: /workspace/.git/build-it-worktrees/001-php84-test-baseline
 
@@ -65,7 +65,7 @@ Codebase facts:
 | D12 | Test layout | `tests/` mirrors `src/` (`tests/util/ConfigTest.php` → `spl\tests\util\ConfigTest`), `final` classes extending `PHPUnit\Framework\TestCase` directly, `test*` method names, `#[DataProvider]` for tables | `tests/Unit/` subtree; a shared base class | Matches the PSR-4 map the user set and keeps each test self-contained; no shared state needs a base class yet | self |
 | D13 | Test bootstrap | `bootstrap="vendor/autoload.php"`, no `tests/bootstrap.php`; tests never call `SPL::init()` or define `SPL_ROOT`/`SPL_DEBUG` | a bootstrap that defines `SPL_ROOT` | Autoload already loads `src/bootstrap.php`; defining `SPL_ROOT` would turn `sqlite://localhost/:memory:` into a file path (`Connection.php:145`) and constants can't be undefined per test | self |
 | D14 | PHPUnit strictness | `failOnDeprecation`, `failOnNotice`, `failOnWarning`, `failOnRisky` on; `<source>` = `src/` | defaults | The point of this PR is to stop 8.4 deprecations; a test touching deprecated code must fail | self |
-| D15 | `composer check` | `["@cs-check", "@phpstan", "@test"]` (Composer stops at the first failing entry) | a shell `&&` chain | Reuses existing scripts; works on every platform Composer runs on | user |
+| D15 | `composer check` | `["@cs-check", "@phpstan", "@test"]` (Composer stops at the first failing entry); add `--memory-limit=1G` to the existing `phpstan` script | a shell `&&` chain; leave `phpstan` at PHP's default memory limit | Reuses existing scripts and works on every platform Composer runs on; PHPStan on this repo is run with 1G by convention and can exceed a 128M default | user (memory flag: self) |
 | D16 | Pre-existing cs-check failure in `src/CLI.php` | apply `php-cs-fixer fix src/CLI.php` as its own style-only commit before the logic change | leave failing | User requires cs-check to pass; a separate commit keeps the CLI logic diff readable | self |
 | D17 | PHPStan scope | keep `paths: [src]` (tests not analysed) | add `tests/` | Analysing tests at level 8 + strict rules needs `phpstan/phpstan-phpunit` (new dependency) and is not requested | self |
 
@@ -73,9 +73,11 @@ Codebase facts:
 
 - MUST require PHP `^8.4` and resolve only stable packages.
   - AC: `composer validate --strict` passes; `composer.json` has `"php": "^8.4"` and no
-    `minimum-stability` key; `composer show` lists no `dev-`/`x-dev` versions.
+    `minimum-stability` key; `composer show --format=json | jq -r '.installed[].version' | grep -c dev`
+    prints `0`.
 - MUST keep `twig/twig ^3.0` as a runtime requirement.
-  - AC: `composer show --no-dev` (`composer show -D`) includes `twig/twig` 3.x.
+  - AC: `jq -r '.require["twig/twig"]' composer.json` prints `^3.0`; `composer show twig/twig`
+    reports a stable v3.x.
 - MUST NOT use `E_STRICT`, `curl_close()`, `ReflectionProperty::setAccessible()` or the
   `is_integer` alias in `src/`.
   - AC: `grep -rnE 'E_STRICT|curl_close|setAccessible|is_integer' src` finds nothing.
@@ -87,7 +89,10 @@ Codebase facts:
     `git diff master -- phpstan.neon phpstan-baseline.neon` is empty; no new
     `@phpstan-ignore` in `src/`.
 - MUST keep CLI behaviour except on PCRE failure and EOF (D6, D7, D9).
-  - AC: covered by code review against D6/D7/D9 (CLI reads STDIN/posix TTY; no tests in this PR).
+  - AC: `printf '2\n' | php -r 'require "vendor/autoload.php"; echo spl\CLI::select("p", ["a","b","c"]);'`
+    ends its output with `2`; `printf 'x\n' | php -r '...; echo spl\CLI::prompt("p");'` ends with `x`;
+    `php -r '...; spl\CLI::prompt("p");' < /dev/null` exits non-zero with `Unexpected end of
+    input`. One-off commands, not PHPUnit tests: a later PR reworks EOF handling.
 - MUST keep `Connection::reconnect()` working.
   - AC: a test creates a table on `sqlite://localhost/:memory:`, calls `reconnect()`, and sees
     an empty schema.
@@ -168,7 +173,8 @@ test class per covered `src/` class, mirrored under `tests/`.
 - **Test seam:** `util\Debug` public methods; `database\Connection` public API.
 - **Deliverable:** PHPStan reports zero errors; deprecated calls gone.
 - **Verify:** `vendor/bin/phpstan analyse --no-progress --memory-limit=1G` → `[OK] No errors`;
-  `grep -rnE 'E_STRICT|curl_close|setAccessible|is_integer' src` empty; `composer test` OK.
+  `grep -rnE 'E_STRICT|curl_close|setAccessible|is_integer' src` empty; `composer test` OK;
+  the three CLI one-off commands in the Requirements behave as stated.
 - **Outcome:**
 
 ### [ ] M3 — Remaining minimal happy-path tests
@@ -198,7 +204,13 @@ test class per covered `src/` class, mirrored under `tests/`.
 
 ## Review
 
-- Plan review:
+- Plan review: 1 pass, self-conducted (no subagent tool in this session) against
+  PLAN-REVIEW.md. No ❌. Fixed: ⚠️ CLI MUST had no checkable AC → added one-off command ACs
+  and M2 Verify; ⚠️ `@phpstan` ran without a memory limit → D15 adds `--memory-limit=1G`;
+  ℹ️ twig AC used a wrong `composer show` flag → `jq` + `composer show twig/twig`; ℹ️ dev-version
+  AC grepped descriptions → JSON versions; ℹ️ PHP-floor release note had no follow-up → added.
+  Verified codebase claims: Debug.php:57/212/328, Http.php:100, Connection.php:41/145/171,
+  Str.php `(string) preg_replace` pattern, phpstan.neon paths/baseline settings.
 - Code review:
 - Merge risk:
 
@@ -208,3 +220,5 @@ PR: pending
 CI: pending
 
 ## Follow-ups
+
+- Release notes / version tag for the PHP `^8.4` floor (docs PR).
