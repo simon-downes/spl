@@ -52,7 +52,7 @@ Verified facts from discovery (master @ fcd7a53):
 | D1 | How fromGlobals() derives the path | `parse_url(..., PHP_URL_PATH)`, fallback `/` | `str_replace` of the query string (today) | str_replace leaves `/a?` for an empty query string and needs QUERY_STRING to exist | user |
 | D2 | Missing QUERY_STRING / HTTP_HOST | QUERY_STRING treated as `''` (no warning); host falls back to SERVER_NAME, then `''` | warn / TypeError (today) | every `php -S` request without a query string logs two warnings | user |
 | D3 | When a body is JSON | media type (content-type before `;`, trimmed, case-insensitive) equals `application/json` | exact header match (today) | `application/json; charset=utf-8` is common and is ignored today | user |
-| D4 | Empty or invalid JSON body | `WebException::badRequest` (400) | JsonException (500) | client error, not a server fault | user |
+| D4 | Empty or invalid JSON body | invalid non-empty JSON: `WebException::badRequest` (400). Empty or whitespace-only (JSON whitespace: space, tab, CR, LF) body: "no body" for every method, no decode, `getBody()` returns the raw string (`''` stays `''`, not `[]`), `lookup()` returns the default (revised post-PR review) | JsonException (500); 400 for empty bodies too (original D4) | client error, not a server fault; many API clients send `Content-Type: application/json` on bodiless GETs, which got a 400 on any `lookup()` miss. `''` kept over `[]` so a JSON-typed empty body looks the same as any other empty body | user |
 | D5 | Where JSON parsing happens | lazily on first `getBody()`/`lookup()`, result cached | in the constructor | constructor runs in `SPL::run()` outside `App::handle()`'s try/catch, so a throw there is a 500; App.php is owned by router-app | user |
 | D6 | Status code handling | keep the STATUSES whitelist; add 308 Permanent Redirect, 422 Unprocessable Content, 429 Too Many Requests | accept any 100-599 code | user wants unknown codes to keep failing | user |
 | D7 | json() encoding failure | `JSON_THROW_ON_ERROR` (JsonException with PHP's message) | `JSON_INVALID_UTF8_SUBSTITUTE`; manual false check | user wants invalid UTF-8 to fail, with a meaningful message | user |
@@ -67,6 +67,8 @@ Verified facts from discovery (master @ fcd7a53):
 | D16 | Which media types count as JSON | only `application/json` | also `+json` suffix types | user scope names `application/json` only; `+json` can be added later | self |
 | D17 | Where to test fromGlobals | unit tests setting `$_SERVER`/`$_POST`/`$_COOKIE`, restored in tearDown | `#[RunInSeparateProcess]` | no process-wide constants involved; superglobals are restorable | self |
 | D18 | Where to verify the 400-through-App path | manual `php -S` smoke test against a temp app outside the worktree | an AppTest in tests/web | App.php/AppTest are router-app's lane; a smoke test exercises SPL::run -> fromGlobals -> App::handle for real | self |
+| D19 | Content headers without the `HTTP_` prefix | `fromGlobals()` maps `$_SERVER['CONTENT_TYPE']`/`['CONTENT_LENGTH']` to the content-type/content-length headers when the `HTTP_` variants are absent (`HTTP_` wins if both exist) | only `HTTP_*` keys (before) | Apache/CGI SAPIs expose them only unprefixed, so JSON bodies were never detected there (added post-PR review) | user |
+| D20 | How to test send()'s cookie options | extract a protected static `Response::cookieOptions()` used by `send()`, tested via ReflectionMethod | separate-process / `php -S` test | `headers_list()` is always empty in CLI, so send() itself can't be observed in PHPUnit; the extracted method is the whole mapping (added post-PR review) | user |
 
 ## Requirements
 
@@ -78,8 +80,12 @@ Verified facts from discovery (master @ fcd7a53):
   - AC: three fromGlobals() cases return `example.com`, `server.local`, `''`.
 - MUST decode the body as JSON when the content-type media type is `application/json`, regardless of parameters, whitespace or case.
   - AC: `application/json; charset=utf-8` and ` Application/JSON ` bodies decode; `text/plain` stays a raw string.
-- MUST throw `WebException` with code 400 from `getBody()` and `lookup()` (not from the constructor) for an empty or invalid JSON body.
-  - AC: constructing with body `{bad` does not throw; `getBody()` and `lookup('k')` throw WebException code 400; `''` body likewise; `lookup()` of a key present in the query does not read the body; `php -S` smoke test with bad JSON gets HTTP 400, not 500.
+- MUST throw `WebException` with code 400 from `getBody()` and `lookup()` (not from the constructor) for a non-empty invalid JSON body.
+  - AC: constructing with body `{bad` does not throw; `getBody()` and `lookup('k')` throw WebException code 400; `lookup()` of a key present in the query does not read the body; `php -S` smoke test with bad JSON gets HTTP 400, not 500.
+- MUST treat an empty or whitespace-only body with a JSON content-type as no body, for every method (revised post-PR review, D4).
+  - AC: GET/DELETE/POST/PUT with `Content-Type: application/json` and body `''` or whitespace: `lookup('limit', 10)` returns 10, `getBody()` returns the raw body; `php -S` GET with the header and no body returns 200.
+- MUST read the content type and length from unprefixed `CONTENT_TYPE`/`CONTENT_LENGTH` when the `HTTP_` variants are absent (D19).
+  - AC: fromGlobals() with only `CONTENT_TYPE`/`CONTENT_LENGTH` returns them from `getHeader()`; with both, the `HTTP_` value wins.
 - MUST decode at most once per Request and return the same value on repeat calls.
   - AC: a JSON string body `"abc"` returns `'abc'` from two consecutive `getBody()` calls.
 - MUST accept 308, 422 and 429 in `setStatus()` with their standard reason phrases, and still reject unknown codes.
@@ -87,7 +93,7 @@ Verified facts from discovery (master @ fcd7a53):
 - MUST make `Response::json()` throw `JsonException` on unencodable data, with PHP's error message.
   - AC: `Response::json(['x' => "\xB1\x31"])` throws JsonException with message containing `Malformed UTF-8`.
 - MUST send cookies with the `setcookie()` options form, HttpOnly true and SameSite Lax by default, with secure settable; existing positional calls keep working.
-  - AC: `setCookie('s', 'v')` stores `secure false, httponly true, samesite 'Lax'`; `setCookie('s', 'v', secure: true, samesite: 'strict')` stores secure true, samesite `Strict`; `samesite: 'bogus'` throws InvalidArgumentException; `send()` passes the stored options (verified by code review and the smoke test's Set-Cookie header).
+  - AC: `setCookie('s', 'v')` stores `secure false, httponly true, samesite 'Lax'`; `setCookie('s', 'v', secure: true, samesite: 'strict')` stores secure true, samesite `Strict`; `samesite: 'bogus'` throws InvalidArgumentException; `send()` passes the stored options via `cookieOptions()`, whose output is asserted exactly (`testCookieOptionsPassedToSetcookie`), plus the smoke test's Set-Cookie header.
 - MUST HTML-escape the exception message in `Response::fromThrowable()`.
   - AC: `badRequest('<script>alert(1)</script>')` body is `<h1>&lt;script&gt;alert(1)&lt;/script&gt;</h1>`.
 - MUST store `content-length` as a string.
@@ -107,12 +113,18 @@ handler, where `App::handle()` already turns a WebException into a response.
 
 ### Code structure
 
-- src/web/Request.php: `fromGlobals()` guards; new protected `bool $body_decoded` flag and
-  protected `decodeBody()` called by `getBody()`; `lookup()` reads through `getBody()`;
-  constructor no longer decodes. Media-type check in a protected `isJson()`.
+- src/web/Request.php: `fromGlobals()` guards, unprefixed CONTENT_TYPE/CONTENT_LENGTH
+  mapping (D19) and path parsing in a protected static `parsePath()`; new protected
+  `bool $body_decoded` flag; decoding is inline in `getBody()` (skipped for empty or
+  whitespace-only bodies, D4), guarded by the flag; `lookup()` returns the query value if
+  set, else reads through `getBody()` and indexes it only when it's an array
+  (`is_array($body) ? $body[$k] ?? $default : $default`); constructor no longer decodes.
+  Media-type check in a protected `isJson()`.
 - src/web/Response.php: STATUSES additions; `json()` flag; `fromThrowable()` escaping;
-  `setBody()` cast; `setCookie()` new params, validation and stored keys; `send()` options
-  array; cookie property docblock gains the new keys.
+  `setBody()` cast; `setCookie()` new params, validation and stored keys; `send()` passes
+  the options array built by a protected static `cookieOptions()` (D20); cookie property
+  docblock gains the new keys.
+- phpstan-baseline.neon: the now-unmatched Response `$headers` entry removed.
 - src/web/WebException.php: no change expected.
 - tests/web/RequestTest.php, tests/web/ResponseTest.php: extended (follow the existing
   style in those files and `tests/util/EnvTest.php` for setUp/tearDown restore).
@@ -144,15 +156,16 @@ handler, where `App::handle()` already turns a WebException into a response.
 
 ### [x] M2 — Lazy JSON body decoding with 400 on bad JSON
 
-- **Approach:** remove decoding from the constructor; `getBody()` calls `decodeBody()` once
-  (flag), which, for a string body with a JSON media type, `json_decode(..., true,
-  flags: JSON_THROW_ON_ERROR)` and converts JsonException to
-  `WebException::badRequest('Invalid JSON request body: ' . message)`, leaving the flag unset
-  so later calls fail the same way. `lookup()` uses `$this->query[$k] ?? $this->getBody()[$k] ?? $default`
-  only reading the body when the query lacks the key. Tests first: charset parameter body
-  decodes (fails today); bad JSON constructs but getBody throws 400 (fails today).
+- **Approach:** remove decoding from the constructor; `getBody()` decodes inline, once
+  (flag): for a non-empty (after trimming JSON whitespace) string body with a JSON media
+  type, `json_decode(..., true, flags: JSON_THROW_ON_ERROR)`, converting JsonException to
+  `WebException::badRequest('Invalid JSON request body: ' . message)` and leaving the flag
+  unset so later calls fail the same way. `lookup()` returns `$this->query[$k]` if set,
+  otherwise reads `getBody()` and returns `$body[$k] ?? $default` only if the body is an
+  array, else `$default`. Tests first: charset parameter body decodes (fails today); bad
+  JSON constructs but getBody throws 400 (fails today).
 - **Test seam:** `new Request(...)` then `getBody()` / `lookup()`.
-- **Edge cases:** bad JSON but key in query -> `lookup()` returns the query value; `{}` -> `[]`; `"abc"` -> `'abc'` twice; `''` -> 400; array body with JSON content-type -> unchanged; non-JSON content-type string -> unchanged.
+- **Edge cases:** bad JSON but key in query -> `lookup()` returns the query value; `{}` -> `[]`; `"abc"` -> `'abc'` twice; `''` -> no body, returned as `''` (revised post-PR review, D4; originally 400); array body with JSON content-type -> unchanged; non-JSON content-type string -> unchanged.
 - **Deliverable:** JSON bodies decode by media type; bad JSON is a 400 from the handler.
 - **Verify:** RequestTest passes; smoke test: `php -S` temp app with a route returning `$request->getBody()`; `curl -X POST -H 'Content-Type: application/json; charset=utf-8' -d '{"a":1}'` -> 200 `{"a":1}`; `-d '{bad'` -> 400; no "Undefined array key" in the server log.
 - **Outcome:** Constructor no longer decodes; `getBody()` decodes once via new `isJson()` media-type check and converts JsonException to `WebException::badRequest('Invalid JSON request body: ...')`; `lookup()` reads the body only when the query lacks the key and returns the default for non-array bodies. New tests failed first (JsonException from constructor, charset/falsy bodies left raw). `composer check`: cs 0, phpstan 0, all tests OK. Smoke test (`php -S` on a temp app under /tmp, routes use App's `METHOD:/path` syntax): charset JSON -> 200 `{"body":{"a":1},...}`; `{bad` and empty -> 400 `Invalid JSON request body: Syntax error`; `/path/12:30?q=x` -> path `/path/12:30`; server log has no warnings.
@@ -165,7 +178,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Test seam:** Response factories and `getStatus()`/`getBody()`/`getHeader()`.
 - **Deliverable:** listed Response bugs fixed.
 - **Verify:** `vendor/bin/phpunit tests/web/ResponseTest.php` passes; phpstan 0 errors.
-- **Outcome:** STATUSES gains 308/422/429; `json()` uses JSON_THROW_ON_ERROR; `fromThrowable()` escapes with htmlspecialchars(ENT_QUOTES | ENT_SUBSTITUTE, UTF-8); content-length cast to string (the phpstan baseline entry for Response.php is now unmatched, which phpstan accepts). New tests failed first ("308 is not a valid HTTP status code", TypeError from json(), raw `<script>`, int 3). `composer check`: cs 0, phpstan 0, 101 tests OK.
+- **Outcome:** STATUSES gains 308/422/429; `json()` uses JSON_THROW_ON_ERROR; `fromThrowable()` escapes with htmlspecialchars(ENT_QUOTES | ENT_SUBSTITUTE, UTF-8); content-length cast to string (the phpstan baseline entry for Response.php is now unmatched, which phpstan accepts; removed post-PR review). New tests failed first ("308 is not a valid HTTP status code", TypeError from json(), raw `<script>`, int 3). `composer check`: cs 0, phpstan 0, 101 tests OK.
 
 ### [x] M4 — Cookie options with HttpOnly and SameSite defaults
 
@@ -223,14 +236,53 @@ handler, where `App::handle()` already turns a WebException into a response.
   messages), which can surprise existing apps; limited by being local to three classes,
   covered by 106 tests plus a live smoke test, and easy to revert.
 
+### Independent review (post-PR)
+
+Review: general + risk roles over fcd7a53...1b5feb7. User decisions applied: D4 revised
+(empty body is no body), D19 added (unprefixed content headers), D20 added (cookie
+options test seam).
+
+- ℹ️ phpstan-baseline.neon Response `$headers` entry unmatched: fixed, entry removed;
+  phpstan 0 errors without it.
+- ℹ️ `send()` cookie options mapping untested: fixed, mapping extracted to protected static
+  `Response::cookieOptions()`; `ResponseTest::testCookieOptionsPassedToSetcookie` asserts
+  the exact options array (all six setcookie() keys) for explicit and default cookies.
+  Failed first (method missing).
+- ℹ️ plan Design/M2 described `decodeBody()` and a `??`-chained `lookup()`: fixed, Code
+  structure and M2 Approach now describe the inline decoding and the `is_array` guard.
+- ❓ unprefixed CONTENT_TYPE/CONTENT_LENGTH (Apache/CGI): user decided to fix (D19);
+  `fromGlobals()` maps them when the `HTTP_` variants are absent.
+  `RequestTest::testFromGlobalsReadsUnprefixedContentHeaders` failed first (empty
+  content-type); `testFromGlobalsPrefersHttpContentHeaders` covers precedence. Not run
+  under real Apache/FPM.
+- ❓ bodiless GET with `Content-Type: application/json` gets a 400 on a `lookup()` miss:
+  user decided an empty or whitespace-only body is no body for every method (D4 revised);
+  `getBody()` returns the raw body (`''`), `lookup()` the default; only non-empty invalid
+  JSON is a 400. `RequestTest::testEmptyJsonBodyIsNoBody` (GET/DELETE/POST/PUT, `''` and
+  whitespace) failed first with the 400; `badJsonProvider` now covers `{bad`, `{"a":`,
+  ` {bad` and `"\0"` (still 400). Smoke test (`php -S`, port 8203, temp router script calling `Request::fromGlobals()`
+  and `lookup()` directly): GET
+  `/list?page=2` with the JSON header and no body -> 200 `{"limit":10,"page":"2",...}`;
+  POST `{bad` -> 400 `Invalid JSON request body: Syntax error`; POST `{"limit":5}` -> 5;
+  server log clean.
+- ℹ️ (risk) `parse_url()` turns raw control characters into `_`: fixed, noted in the
+  `parsePath()` docblock (verified: `/a\x01b%01` -> `/a_b%01`).
+- ⚠️ (cross-PR) #5's AppTest asserts an int content-length: not fixed here; being fixed on
+  #5's branch.
+- (cross-PR) Request.php conflict with #7: resolved at merge time by taking this PR's
+  version; no change here.
+
+Checks after fixes: cs-check 0 fixable, phpstan 0 errors, 115 tests / 244 assertions OK.
+
 ## Outcome
 
 Delivered M1-M4: robust `Request::fromGlobals()` (path via parse_url, no QUERY_STRING
-warning, host fallback), lazy media-type JSON decoding with 400 on empty/invalid JSON,
-Response 308/422/429, throwing `json()`, escaped `fromThrowable()`, string
-content-length, and cookie options with HttpOnly + SameSite=Lax defaults. Evidence:
-`composer check` (cs 0 fixable, phpstan 0 errors, 106 tests / 217 assertions OK) and the
-`php -S` smoke test recorded in M2/M4. Not verified: behaviour behind real proxies or
+warning, host fallback, unprefixed CONTENT_TYPE/CONTENT_LENGTH), lazy media-type JSON
+decoding with 400 on invalid JSON (empty bodies count as no body), Response 308/422/429,
+throwing `json()`, escaped `fromThrowable()`, string content-length, and cookie options
+with HttpOnly + SameSite=Lax defaults. Evidence: cs 0 fixable, phpstan 0 errors, 115
+tests / 244 assertions OK after the post-PR review fixes, and the `php -S` smoke tests
+recorded in M2/M4 and the Review section. Not verified: behaviour behind real proxies or
 non-`php -S` SAPIs (FPM/Apache), which populate REQUEST_URI/HTTP_HOST the same way per PHP
 docs but weren't run.
 
