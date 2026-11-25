@@ -138,14 +138,14 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 - **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; `composer check` passes.
 - **Outcome:** `SPL::error()` split into the guarded `error()`, `report()` and `summary()` (src/SPL.php). Before the change 6 of the new SPLTest cases failed (no STDERR output with a log file, with `APP_LOG_LEVEL=critical`, with an `error_log` ini file, and on log-write failure); after, `composer check` OK (79 tests). The generic "handling failed" catch is not exercised by a test (no realistic trigger in the CLI).
 
-### [ ] M3 — Exception and error handlers
+### [x] M3 — Exception and error handlers
 
 - **Approach:** Add `handleException()` (calls `static::error($e)`) and `handleError()` (D1), registered at the end of `init()` (D15); error handler only when `SPL_DEBUG`. New fixtures throw without catching.
 - **Test seam:** fixture process; `SPL::handleError()` called directly in-process.
 - **Edge cases:** `@` suppression; `APP_DEBUG=false` leaves warnings alone.
 - **Deliverable:** `init()`-only scripts log uncaught exceptions and, in debug, fail on warnings.
 - **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; `composer check` passes.
-- **Outcome:**
+- **Outcome:** `SPL::handleError()`/`handleException()` registered at the end of `init()`. New SPLTest cases: uncaught exception (exit 1, logged once with request ID, no PHP fatal), debug warning -> `ErrorException` (exit 1), `@` suppressed (exit 0, no stderr), non-debug warning left to PHP, direct `handleError()` throw/ignore; the log-write-failure test now asserts the debug fallback (`Unable to write log:`). `composer check` OK (85 tests). Note: the host php.ini sets `error_reporting` to `E_ALL & ~E_DEPRECATED`, so the in-process `handleError()` tests set `error_reporting` explicitly.
 
 ### [ ] M4 — Fatal errors handled at shutdown
 

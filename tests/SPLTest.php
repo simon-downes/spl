@@ -3,7 +3,9 @@
 namespace spl\tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use ErrorException;
 use PHPUnit\Framework\TestCase;
+use spl\SPL;
 
 /**
  * End-to-end tests for SPL::init() and its error handling.
@@ -116,11 +118,82 @@ final class SPLTest extends TestCase {
         $this->assertStringContainsString(self::MESSAGE, $this->readLog('php.log'));
     }
 
+    public function testUncaughtExceptionAfterInitIsHandled(): void {
+        $result = $this->runFixture(
+            "SPL::init(__DIR__);\necho SPL_REQUEST_ID;\nthrow new RuntimeException('spl-test-boom');",
+            ['APP_LOG_FILE' => 'logs/app.log'],
+        );
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
+        $this->assertStringNotContainsString('PHP Fatal error', $result['stderr']);
+
+        $log = $this->readLog('logs/app.log');
+        $this->assertStringContainsString("{$result['stdout']} [ERROR] RuntimeException {", $log);
+        $this->assertSame(1, substr_count($log, self::MESSAGE));
+    }
+
+    public function testDebugConvertsWarningsToExceptions(): void {
+        $result = $this->runFixture('SPL::init(__DIR__); echo $undefined; echo "after";', ['APP_DEBUG' => 'true']);
+
+        $this->assertSame(1, $result['exit'], $result['stderr']);
+        $this->assertStringContainsString('ErrorException {', $result['stderr']);
+        $this->assertStringContainsString('WARNING', $result['stderr']);
+        $this->assertStringContainsString('Undefined variable $undefined', $result['stderr']);
+        $this->assertStringNotContainsString('after', $result['stdout']);
+    }
+
+    public function testDebugLeavesSuppressedWarningsAlone(): void {
+        $result = $this->runFixture('SPL::init(__DIR__); echo @$undefined; echo "after";', ['APP_DEBUG' => 'true']);
+
+        $this->assertSame(0, $result['exit'], $result['stderr']);
+        $this->assertSame('after', $result['stdout']);
+        $this->assertSame('', $result['stderr']);
+    }
+
+    public function testNonDebugLeavesWarningsToPhp(): void {
+        $result = $this->runFixture('SPL::init(__DIR__); echo $undefined; echo "after";', ['APP_DEBUG' => 'false']);
+
+        $this->assertSame(0, $result['exit'], $result['stderr']);
+        $this->assertSame('after', $result['stdout']);
+        $this->assertStringContainsString('PHP Warning:  Undefined variable $undefined', $result['stderr']);
+        $this->assertStringNotContainsString('ErrorException', $result['stderr']);
+    }
+
+    public function testHandleErrorThrowsErrorException(): void {
+        $level = error_reporting(E_ALL);
+
+        try {
+            SPL::handleError(E_WARNING, 'msg', 'f.php', 7);
+            $this->fail('No exception thrown');
+        }
+        catch (ErrorException $e) {
+            $this->assertSame('msg', $e->getMessage());
+            $this->assertSame(E_WARNING, $e->getSeverity());
+            $this->assertSame('f.php', $e->getFile());
+            $this->assertSame(7, $e->getLine());
+        }
+        finally {
+            error_reporting($level);
+        }
+    }
+
+    public function testHandleErrorIgnoresUnreportedErrors(): void {
+        $level = error_reporting(E_ALL & ~E_WARNING);
+
+        try {
+            $this->assertFalse(SPL::handleError(E_WARNING, 'msg', 'f.php', 7));
+        }
+        finally {
+            error_reporting($level);
+        }
+    }
+
     /**
      * @param array<string, string> $env
      */
     #[DataProvider('debugProvider')]
-    public function testLogWriteFailureStillReportsTheError(array $env): void {
+    public function testLogWriteFailureStillReportsTheError(array $env, string $failure): void {
         // a regular file where the log directory should be, so the log can't be written
         touch("{$this->root}/blocker");
 
@@ -128,17 +201,19 @@ final class SPLTest extends TestCase {
 
         $this->assertSame(1, $result['exit'], $result['stderr']);
         $this->assertSame(1, substr_count($result['stderr'], self::MESSAGE), $result['stderr']);
-        $this->assertStringContainsString('blocker/app.log', $result['stderr']);
+        $this->assertStringContainsString("{$failure} file_put_contents({$this->root}/blocker/app.log)", $result['stderr']);
         $this->assertStringNotContainsString('PHP Fatal error', $result['stderr']);
     }
 
     /**
-     * @return array<string, array{array<string, string>}>
+     * @return array<string, array{array<string, string>, string}>
      */
     public static function debugProvider(): array {
         return [
-            'debug'    => [['APP_DEBUG' => 'true']],
-            'no debug' => [['APP_DEBUG' => 'false']],
+            // the warning becomes an exception, so SPL::error() falls back to error_log()
+            'debug'    => [['APP_DEBUG' => 'true'], 'Unable to write log:'],
+            // PHP reports the warning itself
+            'no debug' => [['APP_DEBUG' => 'false'], 'PHP Warning: '],
         ];
     }
 

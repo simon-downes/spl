@@ -7,6 +7,7 @@
 namespace spl;
 
 use DateTimeInterface;
+use ErrorException;
 use Throwable;
 use LogicException;
 
@@ -44,6 +45,9 @@ class SPL {
      * Sets SPL_ROOT and SPL_DEBUG constants and loads environment variables.
      * SPL_DEBUG is determined from APP_DEBUG or APP_ENV environment variables.
      * A relative APP_LOG_FILE is resolved against SPL_ROOT and becomes the default log destination.
+     *
+     * Registers handlers so uncaught exceptions go to error() and, in debug mode, PHP warnings,
+     * notices and deprecations are thrown as ErrorException.
      */
     public static function init(string $directory = '', bool $load_env = true): void {
 
@@ -79,6 +83,13 @@ class SPL {
         }
 
         Log::setFile($log_file);
+
+        // in debug mode PHP warnings, notices and deprecations become exceptions
+        if (SPL_DEBUG) {
+            set_error_handler([static::class, 'handleError']);
+        }
+
+        set_exception_handler([static::class, 'handleException']);
 
     }
 
@@ -198,6 +209,37 @@ class SPL {
         if ($exit) {
             exit($exit);
         }
+
+    }
+
+    /**
+     * Error handler registered by init() in debug mode.
+     *
+     * Throws errors included in error_reporting() as ErrorException. Others, including those
+     * suppressed with @, are left to PHP's standard handling.
+     *
+     * @internal
+     *
+     * @throws ErrorException
+     */
+    public static function handleError(int $severity, string $message, string $file = '', int $line = 0): bool {
+
+        if (!(error_reporting() & $severity)) {
+            return false;
+        }
+
+        throw new ErrorException($message, 0, $severity, $file, $line);
+
+    }
+
+    /**
+     * Exception handler registered by init(); passes uncaught exceptions to error().
+     *
+     * @internal
+     */
+    public static function handleException(Throwable $error): void {
+
+        static::error($error);
 
     }
 
