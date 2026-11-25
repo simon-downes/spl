@@ -1,6 +1,6 @@
 # 006 — Harden the HTTP client
 
-Status: reviewing
+Status: done
 Branch: build-it/006-http-client (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/006-http-client
 
@@ -250,7 +250,22 @@ raw body.
 
 ## Outcome
 
+Delivered `spl\HttpResponse` (readonly, `json()`, `ok()`) and a reworked `spl\Http`:
+connect/total timeouts (10 s / 30 s) on every request with per-request `$options`
+overrides, header collection via `CURLOPT_HEADERFUNCTION` keeping only the final response,
+opt-in redirects (max 5), a `json` request option, `head()`, errno-coded `RuntimeException`
+on transport failure, HTTP/2-tolerant `parse_status_line()` and warning-free
+`parse_headers()`, plus `ext-curl` in composer.json/lock. Evidence: `composer check` → cs 0
+files, phpstan `[OK] No errors`, 107 tests OK; bug-first failures recorded in M1.
+Not verified: the connect timeout firing (needs a blackholed address) and the 30 s default
+total timeout elapsing (verified by reading `request()` only).
+
 PR: pending
 CI: pending
 
 ## Follow-ups
+
+- Accept associative header arrays (`['Accept' => 'application/json']`) in `Http` helpers.
+- Consider `CURLFOLLOW_OBEYCODE` (PHP 8.5 / libcurl 8.13) so followed 303s switch
+  PUT/DELETE to GET.
+- Phase 3 docs: README/AGENTS `Http` section (see the PR's "For the docs PR" notes).
