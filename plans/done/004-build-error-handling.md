@@ -1,6 +1,6 @@
 # 004 — Error, exception and shutdown handlers; CLI stderr; log path resolution
 
-Status: reviewing
+Status: done
 Branch: build-it/004-error-handling (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/004-error-handling
 
@@ -172,6 +172,10 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ## Risks
 
+- With the `error_log` ini set to `/dev/stderr` (or similar) in the CLI, the trace is printed twice: only an empty `error_log` setting is treated as the terminal (D10).
+- The "fatal during `SPL::error()`" path (shutdown sees `$handling` true -> one-line `error_log()`) has no automated test: no deterministic trigger exists without user code in the formatter.
+- `src/web/Request.php` is the request-response PR's file; the one-line `QUERY_STRING` fix may conflict with it.
+
 - The debug error handler turns any existing warning/notice/deprecation in app code, other SPL code or libraries into a 500/exit 1. Only the `QUERY_STRING` one was found by the manual web check; others may surface (by design, D1).
 
 - PHP's own fatal output (`display_errors`/`log_errors`) still appears alongside SPL's handling; ini settings are out of scope.
@@ -179,11 +183,18 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ## Review
 
+- Code review: self-conducted (no subagent tool in this session), roles `general` and `risk` (risk applies: public library API, config key semantics, per-request code, external input on the error page), 1 round against references/CODE-REVIEW.md on fcd7a53...HEAD. Fixed: ℹ️ stale `SPLTest` class docblock (claimed every test runs a fixture). Accepted as Risks, not fixed: ℹ️ duplicate CLI output when `error_log` ini points at stderr explicitly (needs guessing what a path means); untested fatal-during-handling guard. Rejected: ⚠️ "`is_dir()` per log write is a per-request cost" (PHP's stat cache makes it one stat per request per directory; no evidence of cost); ⚠️ "debug handler breaks libraries that emit deprecations" (Twig/Symfony use `@trigger_error`, which `error_reporting()` honours; converting unsuppressed ones is the user's decision D1). Spec check: every MUST traced to a passing test or the manual web check (M4 Outcome); the `Request.php` change traces to the M4 deviation.
+- Merge risk: Medium: debug mode now turns any latent warning in app or SPL code into a 500/exit 1 (one was found and fixed in `Request::fromGlobals()`), limited to `SPL_DEBUG` environments; production only gains the exception/shutdown handlers and the log path resolution, both covered by fixture tests.
 - Plan review: 1 pass, self-conducted (no subagent tool in this session) against references/PLAN-REVIEW.md. Findings: ℹ️ new test files not marked new (fixed in Code structure); ℹ️ `tests/ErrorPageTest.php` breaks the mirror-by-class naming (explained in Code structure). Codebase claims re-checked: SPL.php:42-75/164-181, Log.php:68-95, App.php:81, error.php echo sites, check commands. No ❌, so no second pass.
 
 ## Outcome
+
+`SPL::init()` now resolves `APP_LOG_FILE` against `SPL_ROOT` and hands it to `Log::setFile()`, and registers exception, shutdown and (debug-only) error handlers; `SPL::error()` writes the trace to STDERR in the CLI unless the log already went there, and falls back to `error_log()` if logging fails; the error page escapes all exception data. Evidence: `composer check` OK (cs 0 files, PHPStan 0 errors, 92 tests / 313 assertions); manual `php -S` checks and browser before/after screenshots (M4, M5 Outcomes). Not verified: the fatal-during-`SPL::error()` guard; behaviour under php-fpm/Apache (only `php -S` and CLI were run).
 
 PR: pending
 CI: pending
 
 ## Follow-ups
+
+- Router: route keys like `(GET):/path` (the AGENTS.md format) never match because `App::loadRoutes()`'s `[A-z| ]+` excludes `(`; and routes without a method prefix return 405 (router-app lane). Seen during the manual web check.
+- Docs (Phase 3): see the PR's "For the docs PR" list in the build report.

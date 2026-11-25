@@ -10,9 +10,9 @@ use spl\SPL;
 /**
  * End-to-end tests for SPL::init() and its error handling.
  *
- * SPL::init() defines process-wide constants and SPL::error() exits, so each test runs a fixture
- * script in its own PHP process, inside a temporary application root, and inspects the exit code,
- * output and log files.
+ * SPL::init() defines process-wide constants and SPL::error() exits, so most tests run a fixture
+ * script in its own PHP process, inside a temporary application root, and inspect the exit code,
+ * output and log files. The handleError() tests call the handler directly and need no init().
  */
 final class SPLTest extends TestCase {
 
