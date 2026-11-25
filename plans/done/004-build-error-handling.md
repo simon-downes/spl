@@ -56,9 +56,9 @@ Codebase facts:
 | D5 | Relative log paths | `init()`'s resolution (relative -> `SPL_ROOT`) takes effect; `php` keeps meaning `error_log()`; missing directory is created; `Log` works without `init()` | status quo | `logs/app.log` resolves against `public/` under `php -S` and the write fails (verified by user) | user |
 | D6 | error.php escaping | `htmlspecialchars(..., ENT_QUOTES \| ENT_SUBSTITUTE, 'UTF-8')` on class, message, code, file, line, trace file/line/class/type/function | none | Exception messages often contain user input (XSS on the debug page) | user |
 | D7 | How `init()` passes the resolved path to `Log` | new `Log::setFile(?string $file)` static setter; `Log::message()` uses explicit `$file`, else the set value, else `env('APP_LOG_FILE')`; `null` resets to the env fallback | write back into `$_ENV['APP_LOG_FILE']`; `Log` resolving relative paths against `SPL_ROOT` itself | Keeps env as the no-init fallback (D5) without mutating config; `Log` stays independent of `SPL_ROOT`, which tests must never define | self |
-| D8 | Where the log directory is created | in `Log::message()` before each file write: `is_dir($dir) \|\| @mkdir($dir, 0777, true)`, then `file_put_contents()` reports any failure as today | only in `init()` | Covers explicit `$file` paths and a directory removed at runtime; `@` avoids a race warning when two requests create it at once; umask applies to 0777 | self |
+| D8 | Where the log directory is created | in `Log::message()` before each file write: `is_dir($dir) \|\| @mkdir($dir, 0777, true)`; if the directory still doesn't exist, an `E_USER_WARNING` with the `error_get_last()` reason (e.g. `mkdir(): Permission denied`) and the message is skipped; otherwise `file_put_contents()` reports any write failure as today (post-PR review) | only in `init()` | Covers explicit `$file` paths and a directory removed at runtime; `@` avoids a race warning when two requests create it at once; umask applies to 0777 | self |
 | D9 | Handler entry points | public static `SPL::handleError()`, `SPL::handleException()`, `SPL::handleShutdown()` (docblock `@internal`), registered as `[static::class, '...']` | closures inside `init()` | Directly callable from tests without `init()` (brief testing notes); visible in stack traces | self |
-| D10 | Detecting "log destination is the terminal" | new `Log::usesErrorLog(string $level): bool` (level passes `APP_LOG_LEVEL` and destination is `''`/`php`); `SPL::error()` skips the STDERR write when `SPL_CLI && Log::usesErrorLog('ERROR') && ini_get('error_log') === ''` | always print and skip logging; check only `APP_LOG_FILE` | Keeps the prefixed log line with request ID; with `APP_LOG_LEVEL=CRITICAL` nothing is logged, so the trace must still be printed | self |
+| D10 | Detecting "log destination is the terminal" | new `Log::usesErrorLog(string $level): bool` (`@internal`) (level passes `APP_LOG_LEVEL` and destination is `''`/`php`); `SPL::error()` skips the STDERR write when `SPL_CLI && Log::usesErrorLog('ERROR') && ini_get('error_log') === ''` | always print and skip logging; check only `APP_LOG_FILE` | Keeps the prefixed log line with request ID; with `APP_LOG_LEVEL=CRITICAL` nothing is logged, so the trace must still be printed | self |
 | D11 | Failures inside `SPL::error()` | re-entrancy flag `protected static bool $handling`; a Throwable from `Log::error()` -> `error_log()` the trace plus the logging failure (counts as terminal output for D10); any other Throwable while formatting/rendering -> `error_log()` a one-line summary of both; still exits as requested. A re-entrant call or a fatal seen by the shutdown handler while `$handling` is true -> one-line `error_log()` only | let it propagate | A throw from the exception handler becomes a PHP fatal and loses the original error | self |
 | D12 | Shutdown exit status | `handleShutdown()` calls `SPL::error($e, 0)`; PHP keeps its fatal status 255 | `exit(1)` in the shutdown function | `exit` would skip shutdown functions registered after ours (apps, libraries) | self |
 | D13 | Memory headroom for memory-exhausted fatals | no reserved buffer | reserve 32 KB in `init()`, released in `handleShutdown()` (Symfony's ErrorHandler approach) | M4 evidence: the out-of-memory fixture (many small allocations) is formatted, logged and printed without a reserve, so the buffer would be dead code (see Deviations) | self |
@@ -79,7 +79,8 @@ Codebase facts:
   - AC (manual): `php -S` fixture route that exhausts memory returns HTML containing `Allowed memory size` and the log file under the app root gets the entry.
 - MUST handle each error once and never recurse if `SPL::error()` fails.
   - AC: in the uncaught-exception and fatal fixtures the log file contains the error message exactly once.
-  - AC: debug fixture whose `APP_LOG_FILE` is under a regular file (unwritable) exits 1 and STDERR contains the original message and the logging failure, and no `PHP Fatal error`.
+  - AC: debug fixture whose `APP_LOG_FILE` is an existing directory (unwritable) exits 1 and STDERR contains the original message and the logging failure, and no `PHP Fatal error`.
+  - AC: fixture whose `APP_LOG_FILE` is under a read-only directory reports `Unable to create log directory ...: mkdir(): Permission denied` (debug: via the fallback; non-debug: PHP warning), never `No such file or directory`.
 - MUST, in the CLI, write the formatted trace to STDERR when the log destination is not the terminal, and not print it twice when it is.
   - AC: fixture with `APP_LOG_FILE=logs/app.log`: STDERR contains `RuntimeException {` and `boom`.
   - AC: fixtures with no `APP_LOG_FILE` and with `APP_LOG_FILE=php`: STDERR contains `boom` exactly once.
@@ -87,6 +88,7 @@ Codebase facts:
 - MUST resolve a relative `APP_LOG_FILE` against `SPL_ROOT` (not cwd), create the missing directory, and keep `php` meaning `error_log()`.
   - AC: fixture run with cwd = another temp dir and `APP_LOG_FILE=logs/app.log` (no `logs/`): `<root>/logs/app.log` gets the entry; cwd stays empty. Fails before the fix.
   - AC: `APP_LOG_FILE=php` fixture creates no `<root>/php`.
+  - AC: Windows absolute paths (`C:\logs\app.log`, `c:/logs/app.log`, `\\server\share\app.log`) are not prefixed with `SPL_ROOT`.
 - MUST keep `Log` usable without `SPL::init()`.
   - AC: `LogTest`: with `$_ENV['APP_LOG_FILE']` = temp file, `Log::info()` appends a prefixed line; with no destination and `ini_set('error_log', <tmp>)`, the line lands in `<tmp>`; an explicit `$file` beats `setFile()`; `setFile(<dir>/a/b/x.log)` creates `a/b`; `usesErrorLog()` reflects level and destination.
 - MUST HTML-escape every exception value the error page prints.
@@ -102,7 +104,7 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ### Code structure
 
-- `src/Log.php`: `protected static ?string $file = null`; `setFile(?string)`; `usesErrorLog(string $level): bool`; a protected destination lookup (explicit > set > env); directory creation before the write.
+- `src/Log.php`: `protected static ?string $file = null`; `setFile(?string)`; `usesErrorLog(string $level): bool` and `isErrorLog(string $file): bool` (both public `@internal`, for `SPL`); a protected destination lookup (explicit > set > env); directory creation before the write.
 - `src/SPL.php`: `init()` tail; `$handling` static and `FATAL_ERRORS` constant; `handleError()`, `handleException()`, `handleShutdown()`; `error()` rewritten per D10/D11. `render()` untouched (bootstrap-env-str lane).
 - `src/error.php`: an `$h = static fn (mixed $v): string => htmlspecialchars((string) $v, ...)` helper used for every echoed value.
 - New tests (all new files): `tests/LogTest.php`, `tests/SPLTest.php` (fixture runner helper inside the class), `tests/ErrorPageTest.php` (src/error.php has no class, so the page gets a descriptive name).
@@ -116,7 +118,7 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ### Config
 
-- `APP_LOG_FILE`: relative now resolves against `SPL_ROOT` after `init()`; `php`/empty = `error_log()`; directory auto-created.
+- `APP_LOG_FILE`: relative now resolves against `SPL_ROOT` after `init()` (absolute = starts with `/` or `\`, or a drive like `C:\`/`C:/`); `php`/empty = `error_log()` (one predicate, `Log::isErrorLog()`, used by both `Log` and `init()`); directory auto-created.
 
 ## Milestones
 
@@ -147,7 +149,7 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 - **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; `composer check` passes.
 - **Outcome:** `SPL::handleError()`/`handleException()` registered at the end of `init()`. New SPLTest cases: uncaught exception (exit 1, logged once with request ID, no PHP fatal), debug warning -> `ErrorException` (exit 1), `@` suppressed (exit 0, no stderr), non-debug warning left to PHP, direct `handleError()` throw/ignore; the log-write-failure test now asserts the debug fallback (`Unable to write log:`). `composer check` OK (85 tests). Note: the host php.ini sets `error_reporting` to `E_ALL & ~E_DEPRECATED`, so the in-process `handleError()` tests set `error_reporting` explicitly.
 
-### [ ] M4 — Fatal errors handled at shutdown
+### [x] M4 — Fatal errors handled at shutdown
 
 - **Approach:** Add `handleShutdown()` (D3, D11-D13); register in `init()`. Fixtures: `ini_set('memory_limit', '16M')` then grow a linked list of small objects forever (exhausts on a small allocation); `set_time_limit(1)` and loop.
 - **Test seam:** fixture process (log file, STDERR, exit code 255).
@@ -176,20 +178,35 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 - The "fatal during `SPL::error()`" path (shutdown sees `$handling` true -> one-line `error_log()`) has no automated test: no deterministic trigger exists without user code in the formatter.
 - `src/web/Request.php` is the request-response PR's file; the one-line `QUERY_STRING` fix may conflict with it.
 
-- The debug error handler turns any existing warning/notice/deprecation in app code, other SPL code or libraries into a 500/exit 1. Only the `QUERY_STRING` one was found by the manual web check; others may surface (by design, D1).
+- The debug error handler turns any existing warning/notice/deprecation in app code, other SPL code or libraries into a 500/exit 1. Only the `QUERY_STRING` one was found by the manual web check; others may surface (by design, D1). `SPL_DEBUG` is true whenever `APP_DEBUG` isn't set and `APP_ENV` isn't prod-like (including unset), so this applies by default, e.g. to an `init()`-only cron script with no `.env` (user confirmed this default after the post-PR review).
 
 - PHP's own fatal output (`display_errors`/`log_errors`) still appears alongside SPL's handling; ini settings are out of scope.
-- In non-debug mode a failing log write is only a PHP warning, so the error may be missing from the log file (it still reaches STDERR in the CLI).
+- In non-debug mode a failing log write (or log directory creation) is only a PHP warning, so the error may be missing from the log file (it still reaches STDERR in the CLI; on the web only PHP's warning records it). Kept by user decision; the `SPL::error()` docblock says so.
 
 ## Review
 
 - Code review: self-conducted (no subagent tool in this session), roles `general` and `risk` (risk applies: public library API, config key semantics, per-request code, external input on the error page), 1 round against references/CODE-REVIEW.md on fcd7a53...HEAD. Fixed: ℹ️ stale `SPLTest` class docblock (claimed every test runs a fixture). Accepted as Risks, not fixed: ℹ️ duplicate CLI output when `error_log` ini points at stderr explicitly (needs guessing what a path means); untested fatal-during-handling guard. Rejected: ⚠️ "`is_dir()` per log write is a per-request cost" (PHP's stat cache makes it one stat per request per directory; no evidence of cost); ⚠️ "debug handler breaks libraries that emit deprecations" (Twig/Symfony use `@trigger_error`, which `error_reporting()` honours; converting unsuppressed ones is the user's decision D1). Spec check: every MUST traced to a passing test or the manual web check (M4 Outcome); the `Request.php` change traces to the M4 deviation.
-- Merge risk: Medium: debug mode now turns any latent warning in app or SPL code into a 500/exit 1 (one was found and fixed in `Request::fromGlobals()`), limited to `SPL_DEBUG` environments; production only gains the exception/shutdown handlers and the log path resolution, both covered by fixture tests.
+- Merge risk: Medium: debug mode now turns any latent warning in app or SPL code into a 500/exit 1 (one was found and fixed in `Request::fromGlobals()`), limited to `SPL_DEBUG` environments, which includes any environment with no `APP_DEBUG` and no prod-like `APP_ENV`; production only gains the exception/shutdown handlers and the log path resolution, both covered by fixture tests.
 - Plan review: 1 pass, self-conducted (no subagent tool in this session) against references/PLAN-REVIEW.md. Findings: ℹ️ new test files not marked new (fixed in Code structure); ℹ️ `tests/ErrorPageTest.php` breaks the mirror-by-class naming (explained in Code structure). Codebase claims re-checked: SPL.php:42-75/164-181, Log.php:68-95, App.php:81, error.php echo sites, check commands. No ❌, so no second pass.
+
+### Independent review (post-PR)
+
+Review: general + risk roles on fcd7a53...5c5e42b (no ❌/⚠️; four ℹ️, two ❓). All findings fixed; none rejected.
+
+- ℹ️ `SPL::error()` docblock overstated the `error_log()` fallback: fixed by qualifying it (the fallback only happens when the log write throws, i.e. in debug mode; outside debug mode only PHP's warning reports the failure). `Log::message()` still doesn't throw on a failed write (user decision).
+- ℹ️ "empty or `php` means `error_log()`" written twice: `Log::isErrorLog()` is now public `@internal` and `SPL::init()` uses it.
+- ℹ️ `runFixture()` could deadlock on >64 KB of stderr and had no timeout: now reads both pipes non-blocking with `stream_select()` and kills the fixture at a deadline (default 30 s), failing the test. Tests: `testFixtureOutputLargerThanAPipeBufferIsRead` (200 KB to stderr before stdout) and `testFixtureThatNeverFinishesFailsTheTest` (1 s deadline); both hung before the change (killed by `timeout`), pass after.
+- ℹ️ M4 heading checkbox unticked: ticked.
+- ℹ️ `@mkdir` hid the real cause of a log directory failure: after a failed `mkdir` that left no directory, `Log::message()` raises `E_USER_WARNING` "Unable to create log directory <dir>: <error_get_last()>" and skips the write (D8). Test: `testUncreatableLogDirectoryReportsTheRealCause` (read-only parent, debug and non-debug), failed before ("No such file or directory"). `testLogWriteFailureStillReportsTheError` now makes the log path an existing directory, so it still exercises the `file_put_contents()` failure rather than the new mkdir path.
+- ℹ️ Windows absolute `APP_LOG_FILE` became `SPL_ROOT/C:\...`: `SPL::isAbsolutePath()` treats a leading `/` or `\` (covers UNC) and `X:\`/`X:/` as absolute. Test: `testWindowsAbsoluteLogFileIsNotResolvedAgainstRoot` (3 cases), failed before.
+- ❓ `Log::usesErrorLog()` public API or internal: user decision, marked `@internal` (only `SPL::report()` uses it).
+- ❓ strict debug handler on by default: user decision, keep it; the Risks and the PR's Risk/Breaking changes now say it applies whenever `APP_DEBUG` is unset and `APP_ENV` isn't prod-like, e.g. `init()`-only cron scripts with no `.env`.
+- Cross-PR: the `src/web/Request.php` `QUERY_STRING` conflict with #3 is resolved at merge time by taking #3's version; this PR's `?? ''` change is left as is.
+- Checks after the fixes: cs 0 files, PHPStan 0 errors, 99 tests / 357 assertions; `tests/SPLTest.php` passed 3 of 3 reruns.
 
 ## Outcome
 
-`SPL::init()` now resolves `APP_LOG_FILE` against `SPL_ROOT` and hands it to `Log::setFile()`, and registers exception, shutdown and (debug-only) error handlers; `SPL::error()` writes the trace to STDERR in the CLI unless the log already went there, and falls back to `error_log()` if logging fails; the error page escapes all exception data. Evidence: `composer check` OK (cs 0 files, PHPStan 0 errors, 92 tests / 313 assertions); manual `php -S` checks and browser before/after screenshots (M4, M5 Outcomes). Not verified: the fatal-during-`SPL::error()` guard; behaviour under php-fpm/Apache (only `php -S` and CLI were run).
+`SPL::init()` now resolves `APP_LOG_FILE` against `SPL_ROOT` and hands it to `Log::setFile()`, and registers exception, shutdown and (debug-only) error handlers; `SPL::error()` writes the trace to STDERR in the CLI unless the log already went there, and falls back to `error_log()` if logging fails; the error page escapes all exception data. Evidence: `composer check` OK (cs 0 files, PHPStan 0 errors, 92 tests / 313 assertions; 99 / 357 after the post-PR review fixes); manual `php -S` checks and browser before/after screenshots (M4, M5 Outcomes). Not verified: the fatal-during-`SPL::error()` guard; behaviour under php-fpm/Apache (only `php -S` and CLI were run).
 
 PR: https://github.com/simon-downes/spl/pull/7
 CI: none (the repository has no CI checks)
