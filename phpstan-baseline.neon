@@ -35,9 +35,3 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: src/web/App.php
-
-		-
-			message: '#^Property spl\\web\\Response\:\:\$headers \(array\<string, string\>\) does not accept array\<string, int\|string\>\.$#'
-			identifier: assign.propertyType
-			count: 1
-			path: src/web/Response.php
