@@ -5,6 +5,7 @@ namespace spl\tests\web;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use spl\web\Request;
+use spl\web\WebException;
 
 final class RequestTest extends TestCase {
 
@@ -177,6 +178,105 @@ final class RequestTest extends TestCase {
 
         $this->assertSame(['name' => 'John', 'tags' => ['a', 'b']], $request->getBody());
         $this->assertSame('John', $request->lookup('name'));
+    }
+
+    private function makeJsonRequest(string $body, string $content_type = 'application/json', array $query = []): Request {
+        return new Request('POST', 'example.com', '/api', query: $query, body: $body, headers: ['Content-Type' => $content_type]);
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function jsonContentTypeProvider(): array {
+        return [
+            'charset parameter' => ['application/json; charset=utf-8'],
+            'mixed case'        => ['Application/JSON'],
+            'whitespace'        => [' application/json ;charset=UTF-8'],
+        ];
+    }
+
+    #[DataProvider('jsonContentTypeProvider')]
+    public function testJsonBodyIsDetectedByMediaType(string $content_type): void {
+        $request = $this->makeJsonRequest('{"a":1}', $content_type);
+
+        $this->assertSame(['a' => 1], $request->getBody());
+    }
+
+    public function testNonJsonBodyIsLeftAsString(): void {
+        $request = $this->makeJsonRequest('{"a":1}', 'text/plain');
+
+        $this->assertSame('{"a":1}', $request->getBody());
+    }
+
+    public function testArrayBodyIsNotDecoded(): void {
+        $request = new Request('POST', 'example.com', '/api', body: ['a' => '1'], headers: ['Content-Type' => 'application/json']);
+
+        $this->assertSame(['a' => '1'], $request->getBody());
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: mixed}>
+     */
+    public static function jsonValueProvider(): array {
+        return [
+            'empty object' => ['{}', []],
+            'empty array'  => ['[]', []],
+            'zero'         => ['0', 0],
+            'false'        => ['false', false],
+            'string'       => ['"abc"', 'abc'],
+            'null'         => ['null', null],
+        ];
+    }
+
+    #[DataProvider('jsonValueProvider')]
+    public function testValidJsonBodyIsDecodedOnce(string $body, mixed $expected): void {
+        $request = $this->makeJsonRequest($body);
+
+        $this->assertSame($expected, $request->getBody());
+        $this->assertSame($expected, $request->getBody());
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function badJsonProvider(): array {
+        return [
+            'invalid'    => ['{bad'],
+            'empty'      => [''],
+            'whitespace' => ['  '],
+        ];
+    }
+
+    #[DataProvider('badJsonProvider')]
+    public function testBadJsonBodyThrowsBadRequestFromGetBody(string $body): void {
+        // constructing must not throw: SPL::run() builds the request outside App::handle()
+        $request = $this->makeJsonRequest($body);
+
+        try {
+            $request->getBody();
+            $this->fail('Expected WebException');
+        }
+        catch (WebException $e) {
+            $this->assertSame(400, $e->getCode());
+            $this->assertStringStartsWith('Invalid JSON request body', $e->getMessage());
+        }
+
+        // and keeps failing on later calls
+        $this->expectException(WebException::class);
+        $this->expectExceptionCode(400);
+        $request->lookup('name');
+    }
+
+    public function testLookupOfQueryKeyDoesNotReadBadJsonBody(): void {
+        $request = $this->makeJsonRequest('{bad', query: ['page' => '2']);
+
+        $this->assertSame('2', $request->lookup('page'));
+    }
+
+    public function testLookupOnScalarJsonBodyReturnsDefault(): void {
+        $request = $this->makeJsonRequest('"abc"');
+
+        $this->assertSame('none', $request->lookup('name', 'none'));
     }
 
     public function testAttributes(): void {

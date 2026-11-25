@@ -6,6 +6,8 @@
 
 namespace spl\web;
 
+use JsonException;
+
 /**
  * HTTP request representation with convenient access methods.
  *
@@ -13,6 +15,11 @@ namespace spl\web;
  * headers, cookies, and body with automatic JSON parsing.
  */
 class Request {
+
+    /**
+     * Whether the body has been checked for, and if needed decoded from, JSON.
+     */
+    protected bool $body_decoded = false;
 
     /**
      * Creates a Request instance from PHP's global variables.
@@ -81,10 +88,11 @@ class Request {
     /**
      * Creates a new Request instance with the specified parameters.
      *
-     * Normalizes headers to lowercase and automatically parses JSON bodies.
+     * Normalizes headers to lowercase. A string body sent with an application/json
+     * content-type is decoded on first access by getBody() or lookup().
      *
      * @param array<string, string> $query      Query parameters from URL
-     * @param mixed                 $body       Request body (string or parsed array)
+     * @param mixed                 $body       Request body (raw string or parsed array)
      * @param array<string, string> $headers    HTTP headers
      * @param array<string, string> $cookies    Request cookies
      * @param array<string, mixed>  $attributes Additional request metadata
@@ -110,13 +118,6 @@ class Request {
         ksort($this->headers);
         ksort($this->cookies);
 
-        if (is_string($this->body) && strtolower($this->getHeader('content-type')) == 'application/json') {
-            $decoded = json_decode($this->body, true, flags: JSON_THROW_ON_ERROR);
-            if ($decoded) {
-                $this->body = $decoded;
-            }
-        }
-
         $forwarded_for = explode(',', $this->getHeader('x-forwarded-for'));
 
         if (!empty($forwarded_for[0])) {
@@ -139,13 +140,62 @@ class Request {
 
     /**
      * Looks up a value in query parameters first, then request body.
+     *
+     * The body is only read (and decoded if JSON) when the key isn't in the query.
+     *
+     * @throws WebException 400 Bad Request if the body is JSON and can't be decoded
      */
     public function lookup(string $k, mixed $default = null): mixed {
-        return $this->query[$k] ?? $this->body[$k] ?? $default;
+
+        if (isset($this->query[$k])) {
+            return $this->query[$k];
+        }
+
+        $body = $this->getBody();
+
+        return is_array($body) ? $body[$k] ?? $default : $default;
+
     }
 
+    /**
+     * Gets the request body.
+     *
+     * A string body with an application/json media type (parameters such as charset
+     * are ignored) is decoded on the first call, objects as associative arrays, and
+     * the decoded value is returned from then on.
+     *
+     * @throws WebException 400 Bad Request if the body is JSON and is empty or invalid
+     */
     public function getBody(): mixed {
+
+        if (!$this->body_decoded) {
+
+            if (is_string($this->body) && $this->isJson()) {
+                try {
+                    $this->body = json_decode($this->body, true, flags: JSON_THROW_ON_ERROR);
+                }
+                catch (JsonException $e) {
+                    throw WebException::badRequest("Invalid JSON request body: {$e->getMessage()}");
+                }
+            }
+
+            $this->body_decoded = true;
+
+        }
+
         return $this->body;
+
+    }
+
+    /**
+     * Checks whether the request's content-type media type is application/json.
+     */
+    protected function isJson(): bool {
+
+        $media_type = explode(';', $this->getHeader('content-type'), 2)[0];
+
+        return strtolower(trim($media_type)) === 'application/json';
+
     }
 
     /**

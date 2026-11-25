@@ -142,7 +142,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Verify:** `vendor/bin/phpunit tests/web/RequestTest.php` passes with no warnings; full checks pass.
 - **Outcome:** `fromGlobals()` defaults QUERY_STRING to `''`, host to HTTP_HOST/SERVER_NAME/`''`, and uses new `Request::parsePath()`. New tests failed first (TypeError on null host, "Undefined array key QUERY_STRING" warning), then `composer check`: cs 0, phpstan 0 errors, 76 tests OK.
 
-### [ ] M2 — Lazy JSON body decoding with 400 on bad JSON
+### [x] M2 — Lazy JSON body decoding with 400 on bad JSON
 
 - **Approach:** remove decoding from the constructor; `getBody()` calls `decodeBody()` once
   (flag), which, for a string body with a JSON media type, `json_decode(..., true,
@@ -155,7 +155,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Edge cases:** bad JSON but key in query -> `lookup()` returns the query value; `{}` -> `[]`; `"abc"` -> `'abc'` twice; `''` -> 400; array body with JSON content-type -> unchanged; non-JSON content-type string -> unchanged.
 - **Deliverable:** JSON bodies decode by media type; bad JSON is a 400 from the handler.
 - **Verify:** RequestTest passes; smoke test: `php -S` temp app with a route returning `$request->getBody()`; `curl -X POST -H 'Content-Type: application/json; charset=utf-8' -d '{"a":1}'` -> 200 `{"a":1}`; `-d '{bad'` -> 400; no "Undefined array key" in the server log.
-- **Outcome:**
+- **Outcome:** Constructor no longer decodes; `getBody()` decodes once via new `isJson()` media-type check and converts JsonException to `WebException::badRequest('Invalid JSON request body: ...')`; `lookup()` reads the body only when the query lacks the key and returns the default for non-array bodies. New tests failed first (JsonException from constructor, charset/falsy bodies left raw). `composer check`: cs 0, phpstan 0, all tests OK. Smoke test (`php -S` on a temp app under /tmp, routes use App's `METHOD:/path` syntax): charset JSON -> 200 `{"body":{"a":1},...}`; `{bad` and empty -> 400 `Invalid JSON request body: Syntax error`; `/path/12:30?q=x` -> path `/path/12:30`; server log has no warnings.
 
 ### [ ] M3 — Response statuses, JSON errors, escaping and content-length
 
