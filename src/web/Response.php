@@ -8,7 +8,9 @@ namespace spl\web;
 
 use Throwable;
 use Exception;
+use JsonException;
 use BadMethodCallException;
+use InvalidArgumentException;
 
 /**
  * HTTP response representation with fluent interface for configuration.
@@ -48,6 +50,7 @@ class Response {
         304 => 'Not Modified',
         305 => 'Use Proxy',
         307 => 'Temporary Redirect',
+        308 => 'Permanent Redirect',
 
         // client error 4xx
         400 => 'Bad Request',
@@ -68,6 +71,8 @@ class Response {
         415 => 'Unsupported Media Type',
         416 => 'Requested Range Not Satisfiable',
         417 => 'Expectation Failed',
+        422 => 'Unprocessable Content',
+        429 => 'Too Many Requests',
 
         // server error 5xx
         500 => 'Internal Server Error',
@@ -96,7 +101,7 @@ class Response {
     /**
      * Cookie array.
      *
-     * @var array<string, array{value: string, expires: int, path: string, domain: string}>
+     * @var array<string, array{value: string, expires: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Strict'|'Lax'|'None'}>
      */
     protected array $cookies;
 
@@ -112,13 +117,14 @@ class Response {
      *
      * Uses the exception's code as HTTP status if it's a WebException,
      * otherwise defaults to 500 Internal Server Error.
+     * The exception message is HTML-escaped into the body.
      */
     public static function fromThrowable(Throwable $e): static {
 
         $code = $e instanceof WebException ? $e->getCode() : 500;
 
         // TOOD: attempt to render a view
-        $body = sprintf('<h1>%s</h1>', $e->getMessage());
+        $body = sprintf('<h1>%s</h1>', htmlspecialchars($e->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
 
         return (new static($code, $body));
 
@@ -135,9 +141,11 @@ class Response {
      * Creates a JSON response with appropriate content-type header.
      *
      * @param array<mixed> $data Data to be JSON encoded
+     *
+     * @throws JsonException If the data can't be encoded (e.g. malformed UTF-8)
      */
     public static function json(array $data, int $status = 200): static {
-        return new static($status, json_encode($data), 'application/json');
+        return new static($status, json_encode($data, JSON_THROW_ON_ERROR), 'application/json');
     }
 
     /**
@@ -244,7 +252,7 @@ class Response {
         }
 
         $this->headers['content-type'] = "{$content_type}; charset={$charset}";
-        $this->headers['content-length'] = strlen($this->body);
+        $this->headers['content-length'] = (string) strlen($this->body);
 
         return $this;
 
@@ -275,9 +283,27 @@ class Response {
     /**
      * Sets a cookie (or removes it if value is null).
      *
-     * The expires parameter is in seconds from now, not a timestamp.
+     * The expires parameter is in seconds from now, not a timestamp; 0 means a session cookie.
+     * Cookies are HttpOnly and SameSite=Lax by default. Browsers reject SameSite=None
+     * cookies that aren't also secure.
+     *
+     * Usage:
+     *   $response->setCookie('session', $id, 3600, secure: true);
+     *
+     * @param string $samesite One of Strict, Lax or None (case-insensitive)
+     *
+     * @throws InvalidArgumentException If samesite isn't Strict, Lax or None
      */
-    public function setCookie(string $name, ?string $value = null, int $expires = 0, string $path = '/', string $domain = ''): static {
+    public function setCookie(
+        string $name,
+        ?string $value = null,
+        int $expires = 0,
+        string $path = '/',
+        string $domain = '',
+        bool $secure = false,
+        bool $httponly = true,
+        string $samesite = 'Lax',
+    ): static {
 
         // if the value is null then unset the cookie
         if ($value === null) {
@@ -285,11 +311,21 @@ class Response {
             return $this;
         }
 
+        $samesite = match (strtolower($samesite)) {
+            'strict' => 'Strict',
+            'lax'    => 'Lax',
+            'none'   => 'None',
+            default  => throw new InvalidArgumentException("Invalid SameSite value: {$samesite}"),
+        };
+
         $this->cookies[$name] = [
-            'value'   => $value,
-            'expires' => $expires ? time() + $expires : 0,
-            'path'    => $path,
-            'domain'  => $domain,
+            'value'    => $value,
+            'expires'  => $expires ? time() + $expires : 0,
+            'path'     => $path,
+            'domain'   => $domain,
+            'secure'   => $secure,
+            'httponly' => $httponly,
+            'samesite' => $samesite,
         ];
 
         return $this;
@@ -305,11 +341,29 @@ class Response {
         }
 
         foreach ($this->cookies as $name => $cookie) {
-            setcookie($name, $cookie['value'], $cookie['expires'], $cookie['path'], $cookie['domain']);
+            setcookie($name, $cookie['value'], static::cookieOptions($cookie));
         }
 
         echo $this->body;
 
+    }
+
+    /**
+     * Builds the setcookie() options array for a stored cookie.
+     *
+     * @param array{value: string, expires: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Strict'|'Lax'|'None'} $cookie
+     *
+     * @return array{expires: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Strict'|'Lax'|'None'}
+     */
+    protected static function cookieOptions(array $cookie): array {
+        return [
+            'expires'  => $cookie['expires'],
+            'path'     => $cookie['path'],
+            'domain'   => $cookie['domain'],
+            'secure'   => $cookie['secure'],
+            'httponly' => $cookie['httponly'],
+            'samesite' => $cookie['samesite'],
+        ];
     }
 
 }

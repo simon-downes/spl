@@ -65,8 +65,19 @@ class Connection {
      * Creates a new database connection from a URL.
      *
      * URL format: driver://username:password@host:port/database?option=value
+     * MySQL, PostgreSQL and SQL Server URLs must include a host.
      *
-     * @throws RuntimeException If the URL is invalid or the connection fails
+     * Reserved characters in the username, password or database must be percent-encoded
+     * (e.g. a password of p/ss is written p%2Fss).
+     *
+     * SQLite URLs:
+     * - sqlite:///abs/path/app.db (exactly three slashes) or sqlite:/abs/path/app.db - absolute path
+     * - sqlite://localhost/rel/path/app.db or sqlite:rel/path/app.db - relative to SPL_ROOT
+     *   (or the working directory if undefined)
+     * - sqlite://localhost/:memory: or sqlite:///:memory: - in-memory database
+     *
+     * @throws RuntimeException If the URL is invalid, has no database (or no host for a
+     *                          network driver), or the connection fails
      */
     public function __construct(string $url) {
 
@@ -89,7 +100,8 @@ class Connection {
      *
      * @return stdClass The parsed DSN object
      *
-     * @throws RuntimeException If the URL is invalid or the database type is unknown
+     * @throws RuntimeException If the URL is invalid, the database name or (for a network
+     *                          driver) the host is missing, or the database type is unknown
      */
     protected function makeDSN(string $url): stdClass {
 
@@ -106,12 +118,19 @@ class Connection {
             'port'    => $parts['port'],
             'user'    => $parts['user'],
             'pass'    => $parts['pass'],
-            'db'      => trim($parts['path'], '/'),
+            'db'      => trim((string) $parts['path'], '/'),
             'options' => $parts['query'],
         ];
 
         if (empty($dsn->db)) {
             throw new RuntimeException("No database name specified");
+        }
+
+        // network drivers need a host; only SQLite accepts an empty authority (sqlite:///path)
+        $network = [static::TYPE_MYSQL, static::TYPE_POSTGRES, static::TYPE_SQL_SERVER];
+
+        if ($dsn->host === '' && in_array($dsn->type, $network, true)) {
+            throw new RuntimeException("No database host specified");
         }
 
         // create a PDO DSN string depending on the database type
@@ -134,16 +153,26 @@ class Connection {
 
             case static::TYPE_SQLITE:
 
+                // :memory: is never a file. Without a host the path is absolute if it starts
+                // with '/' (sqlite:///abs/path or sqlite:/abs/path); every other path
+                // (sqlite:rel/path, sqlite://localhost/rel/path) is relative to SPL_ROOT
+                if ($dsn->db === ':memory:') {
+                    $path = ':memory:';
+                }
+                elseif ($dsn->host === '' && str_starts_with((string) $parts['path'], '/')) {
+                    $dsn->db = $path = (string) $parts['path'];
+                }
+                else {
+                    $path = (defined('SPL_ROOT') ? SPL_ROOT . '/' : '') . $dsn->db;
+                }
+
                 // these should always be null as they're invalid for SQLite connections
                 $dsn->host = 'localhost';
                 $dsn->port = null;
                 $dsn->user = null;
                 $dsn->pass = null;
 
-                $dsn->pdo = sprintf(
-                    'sqlite:%s',
-                    (defined('SPL_ROOT') ? SPL_ROOT . '/' : '') . $dsn->db,
-                );
+                $dsn->pdo = "sqlite:{$path}";
 
                 break;
 
@@ -532,7 +561,7 @@ class Connection {
     /**
      * Gets the last error information from the database.
      *
-     * @return array
+     * @return array<int, mixed> SQLSTATE code, driver error code and driver error message
      */
     public function getLastError(): array {
         return $this->pdo->errorInfo();
@@ -547,7 +576,7 @@ class Connection {
 
         $server = $this->pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
 
-        if (!$this->dsn->type == static::TYPE_SQLITE) {
+        if ($this->dsn->type !== static::TYPE_SQLITE) {
             $server .= ': ' . $this->pdo->getAttribute(PDO::ATTR_SERVER_INFO);
         }
 
@@ -565,7 +594,8 @@ class Connection {
      * Binds named and positional parameters to a PDOStatement.
      *
      * Handles both named (:param) and positional (?) parameters.
-     * Automatically determines parameter types.
+     * Types are determined from the value: null as PDO::PARAM_NULL, bool as PDO::PARAM_BOOL,
+     * int as PDO::PARAM_INT and anything else as PDO::PARAM_STR.
      *
      * @param array<string|int, mixed> $params Parameters to bind
      */
@@ -573,11 +603,12 @@ class Connection {
 
         foreach ($params as $name => $value) {
 
-            $type = PDO::PARAM_STR;
-
-            if (is_int($value)) {
-                $type = PDO::PARAM_INT;
-            }
+            $type = match (true) {
+                $value === null  => PDO::PARAM_NULL,
+                is_bool($value)  => PDO::PARAM_BOOL,
+                is_int($value)   => PDO::PARAM_INT,
+                default          => PDO::PARAM_STR,
+            };
 
             // handle positional (?) and named (:name) parameters
             $name = is_numeric($name) ? (int) $name + 1 : ":{$name}";
