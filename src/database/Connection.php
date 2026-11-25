@@ -65,16 +65,19 @@ class Connection {
      * Creates a new database connection from a URL.
      *
      * URL format: driver://username:password@host:port/database?option=value
+     * MySQL, PostgreSQL and SQL Server URLs must include a host.
      *
      * Reserved characters in the username, password or database must be percent-encoded
      * (e.g. a password of p/ss is written p%2Fss).
      *
      * SQLite URLs:
-     * - sqlite:///abs/path/app.db - absolute path
-     * - sqlite://localhost/rel/path/app.db - relative to SPL_ROOT (or the working directory if undefined)
+     * - sqlite:///abs/path/app.db (exactly three slashes) or sqlite:/abs/path/app.db - absolute path
+     * - sqlite://localhost/rel/path/app.db or sqlite:rel/path/app.db - relative to SPL_ROOT
+     *   (or the working directory if undefined)
      * - sqlite://localhost/:memory: or sqlite:///:memory: - in-memory database
      *
-     * @throws RuntimeException If the URL is invalid or the connection fails
+     * @throws RuntimeException If the URL is invalid, has no database (or no host for a
+     *                          network driver), or the connection fails
      */
     public function __construct(string $url) {
 
@@ -97,7 +100,8 @@ class Connection {
      *
      * @return stdClass The parsed DSN object
      *
-     * @throws RuntimeException If the URL is invalid or the database type is unknown
+     * @throws RuntimeException If the URL is invalid, the database name or (for a network
+     *                          driver) the host is missing, or the database type is unknown
      */
     protected function makeDSN(string $url): stdClass {
 
@@ -122,6 +126,13 @@ class Connection {
             throw new RuntimeException("No database name specified");
         }
 
+        // network drivers need a host; only SQLite accepts an empty authority (sqlite:///path)
+        $network = [static::TYPE_MYSQL, static::TYPE_POSTGRES, static::TYPE_SQL_SERVER];
+
+        if ($dsn->host === '' && in_array($dsn->type, $network, true)) {
+            throw new RuntimeException("No database host specified");
+        }
+
         // create a PDO DSN string depending on the database type
         switch ($dsn->type) {
 
@@ -142,12 +153,13 @@ class Connection {
 
             case static::TYPE_SQLITE:
 
-                // :memory: is never a file; otherwise no host (sqlite:///path) means an
-                // absolute path and a host (sqlite://localhost/path) means relative to SPL_ROOT
+                // :memory: is never a file. Without a host the path is absolute if it starts
+                // with '/' (sqlite:///abs/path or sqlite:/abs/path); every other path
+                // (sqlite:rel/path, sqlite://localhost/rel/path) is relative to SPL_ROOT
                 if ($dsn->db === ':memory:') {
                     $path = ':memory:';
                 }
-                elseif ($dsn->host === '') {
+                elseif ($dsn->host === '' && str_starts_with((string) $parts['path'], '/')) {
                     $dsn->db = $path = (string) $parts['path'];
                 }
                 else {

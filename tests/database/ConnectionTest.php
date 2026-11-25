@@ -222,6 +222,33 @@ final class ConnectionTest extends TestCase {
         new Connection($url);
     }
 
+    public function testRejectsFourSlashSqliteURL(): void {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid database configuration');
+
+        self::makeDSN('sqlite:////abs/path.db');
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function missingHostProvider(): array {
+        return [
+            'mysql empty authority'  => ['mysql:///app'],
+            'pgsql empty authority'  => ['pgsql:///app'],
+            'sqlsrv empty authority' => ['sqlsrv:///app'],
+            'mysql no authority'     => ['mysql:app'],
+        ];
+    }
+
+    #[DataProvider('missingHostProvider')]
+    public function testRejectsNetworkURLWithoutHost(string $url): void {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('No database host specified');
+
+        self::makeDSN($url);
+    }
+
     #[RunInSeparateProcess]
     public function testMemoryDatabaseIsNotPrefixedWithRoot(): void {
         // a directory that doesn't exist, so a prefixed path fails instead of creating a file
@@ -236,6 +263,33 @@ final class ConnectionTest extends TestCase {
         $file = $this->tempFile();
 
         $this->assertSame('sqlite:' . $file, (new Connection('sqlite://' . $file))->getDSN()->pdo);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function hostlessSqlitePathProvider(): array {
+        return [
+            'relative path' => ['sqlite:db/app.db', '/db/app.db'],
+            'relative file' => ['sqlite:app.db', '/app.db'],
+        ];
+    }
+
+    #[RunInSeparateProcess]
+    #[DataProvider('hostlessSqlitePathProvider')]
+    public function testHostlessRelativeSqlitePathIsPrefixedWithRoot(string $url, string $suffix): void {
+        // a directory that doesn't exist; makeDSN() doesn't open the file
+        $root = sys_get_temp_dir() . '/spl-missing-root-' . bin2hex(random_bytes(4));
+        define('SPL_ROOT', $root);
+
+        $this->assertSame('sqlite:' . $root . $suffix, self::makeDSN($url)->pdo);
+    }
+
+    #[RunInSeparateProcess]
+    public function testHostlessAbsoluteSqlitePathIsNotPrefixedWithRoot(): void {
+        define('SPL_ROOT', sys_get_temp_dir() . '/spl-missing-root-' . bin2hex(random_bytes(4)));
+
+        $this->assertSame('sqlite:/var/data/app.db', self::makeDSN('sqlite:/var/data/app.db')->pdo);
     }
 
     #[RunInSeparateProcess]

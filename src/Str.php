@@ -128,15 +128,16 @@ class Str {
      * user, pass, host and path are decoded once with rawurldecode(), so a literal '+'
      * stays a '+'; the query is decoded by parse_str(). Default values are returned as given.
      *
-     * URLs with an empty authority (scheme:///path) are accepted: host is left to its
-     * default and path is the absolute path, e.g. sqlite:///var/data/app.db.
+     * URLs with an empty authority (exactly three slashes, scheme:///path) are accepted:
+     * host is left to its default and path is the absolute path, e.g. sqlite:///var/data/app.db.
+     * Four or more slashes are not rewritten, so parse_url() rejects them and null is returned.
      *
      * @return array<string, mixed>|null URL components or null if parsing fails
      */
     public static function parseURL(string $url, array $defaults = []): array|null {
 
         // parse_url() rejects an empty authority, but scheme:/path parses to the same parts
-        $url = (string) preg_replace('#^([a-z][a-z0-9+.\-]*):///#i', '$1:/', $url);
+        $url = (string) preg_replace('#^([a-z][a-z0-9+.\-]*):///(?!/)#i', '$1:/', $url);
 
         $parts = parse_url($url);
 
@@ -169,7 +170,9 @@ class Str {
      * Builds a URL string from component parts.
      *
      * Accepts the array returned by parseURL(); empty components are omitted.
-     * The user and password are percent-encoded. The query is not included.
+     * The user and password are percent-encoded. The host and path are emitted as
+     * given (parseURL() returns them decoded), so parseURL() followed by buildURL()
+     * only round-trips when the host and path need no encoding. The query is not included.
      *
      * By default, passwords are masked as '<password>' for security.
      * Set show_pw to true to include the actual password.

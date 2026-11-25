@@ -136,6 +136,11 @@ final class StrTest extends TestCase {
         $this->assertSame('/var/data/app.db', $parts['path']);
     }
 
+    public function testParseURLRejectsFourSlashes(): void {
+        // only exactly three slashes mean an empty authority; four must not turn 'abs' into the host
+        $this->assertNull(Str::parseURL('sqlite:////abs/path.db'));
+    }
+
     /**
      * @return array<string, array{string}>
      */
