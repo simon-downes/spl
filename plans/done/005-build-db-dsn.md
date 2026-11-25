@@ -1,6 +1,6 @@
 # 005 — DB DSN parsing, SQLite paths, typed binding and facade docblocks
 
-Status: reviewing
+Status: done
 Branch: build-it/005-db-dsn (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/005-db-dsn
 
@@ -251,6 +251,15 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   and the change is a one-line revert.
 
 ## Outcome
+
+Delivered: `Str::parseURL()` parses before decoding (encoded credentials work) and accepts
+`scheme:///path`; `Str::buildURL()` round-trips parseURL output; SQLite absolute paths,
+unprefixed `:memory:`, and relative-to-`SPL_ROOT` paths; null/bool parameter types; the
+`getInfo()` server-info fix; `@method static` tags on `DB`. Evidence: `composer check` exits 0
+(cs clean, PHPStan 0 errors, 98 tests / 224 assertions OK, up from 60 tests); each bug-fix test
+was seen failing first (see milestone Outcomes); throwaway PHPStan run confirmed the facade types.
+Not verified: behaviour against live MySQL, Postgres or SQL Server (only `makeDSN()` strings and
+a stubbed `getInfo()` are tested), including `PARAM_BOOL` on those drivers.
 
 PR: pending
 CI: pending
