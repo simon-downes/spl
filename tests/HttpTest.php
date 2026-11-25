@@ -152,6 +152,18 @@ final class HttpTest extends TestCase {
         $this->assertSame('DELETE', Http::delete(self::url('router', '/echo'))->json()['method']);
     }
 
+    public function testOptionsUsesCustomMethod(): void {
+        $this->assertSame('OPTIONS', Http::options(self::url('router', '/echo'))->json()['method']);
+    }
+
+    public function testGetWithBodyKeepsGetMethod(): void {
+
+        $response = Http::request('get', self::url('router', '/echo'), ['Content-Type: text/plain'], 'query');
+
+        $this->assertSame(['method' => 'GET', 'content_type' => 'text/plain', 'body' => 'query'], $response->json());
+
+    }
+
     public function testTransportFailureThrowsWithCurlErrno(): void {
 
         // nothing listens on a port we just released

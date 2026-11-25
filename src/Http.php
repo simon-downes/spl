@@ -325,14 +325,14 @@ class Http {
     private static function resolveOptions(array $options): array {
 
         foreach (array_keys($options) as $key) {
-            if ($key !== 'json' && !array_key_exists($key, self::DEFAULTS)) {
+            if ($key !== 'json' && !array_key_exists($key, static::DEFAULTS)) {
                 throw new InvalidArgumentException("Unknown Http option: {$key}");
             }
         }
 
-        $connect_timeout  = $options['connect_timeout'] ?? self::DEFAULTS['connect_timeout'];
-        $timeout          = $options['timeout'] ?? self::DEFAULTS['timeout'];
-        $follow_redirects = $options['follow_redirects'] ?? self::DEFAULTS['follow_redirects'];
+        $connect_timeout  = $options['connect_timeout'] ?? static::DEFAULTS['connect_timeout'];
+        $timeout          = $options['timeout'] ?? static::DEFAULTS['timeout'];
+        $follow_redirects = $options['follow_redirects'] ?? static::DEFAULTS['follow_redirects'];
 
         if (!is_int($connect_timeout) || $connect_timeout < 0) {
             throw new InvalidArgumentException("Http option 'connect_timeout' must be a non-negative integer (seconds)");

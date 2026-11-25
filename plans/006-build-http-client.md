@@ -221,6 +221,32 @@ raw body.
   < 7.85, so D4 drops it and relies on curl's default redirect protocols; ℹ️ empty-method and
   `follow_redirects` type validation had no AC (added); ℹ️ the router's HEAD trigger
   (explicit `Content-Length`) was unstated (added). No ❌, so no second pass.
+- Code review: self-conducted (no subagent tool in this session) per
+  references/CODE-REVIEW.md, roles `general` and `risk` (risk applies: public library API,
+  external HTTP input, per-request code). One round, no ❌.
+  - Fixed ℹ️ (general): `resolveOptions()` read `self::DEFAULTS` while `request()` used
+    `static::MAX_REDIRECTS`; now both use `static::` like the rest of the class.
+  - Fixed ℹ️ (general): `options()` and the "GET with a body keeps GET" branch of D5 had no
+    test; added `testOptionsUsesCustomMethod` and `testGetWithBodyKeepsGetMethod`.
+  - Fixed ℹ️ (risk): breaking changes were incomplete; added the 30 s default total
+    timeout, errno exception codes, and positional `$body` on get/delete/options now
+    hitting the `$options` slot (TypeError) to the PR's Breaking changes list.
+  - Rejected (risk): Authorization/Cookie headers leaking on followed cross-host redirects
+    — libcurl ≥ 7.58 / 7.83 already drops custom `Authorization`/`Cookie` headers on
+    host change, and following is opt-in (D4).
+  - Rejected (general): `freePort()` race (port reused between release and use) — the
+    window is microseconds on loopback and a clash fails loudly, not silently.
+  - Rejected (general): Content-Type scan doesn't stop early — equal alternative, header
+    lists are a handful of entries.
+  - Spec check: every MUST maps to a passing test (see M1-M3 Outcomes) except that the
+    *default* timeouts being applied is verified by code reading only (a test would
+    take 30 s); `ext-curl` verified by `composer validate --strict`.
+  - Checks after fixes: `composer check` → cs 0 files, phpstan `[OK] No errors`, 107 tests
+    OK; `tests/HttpTest.php` + `tests/HttpResponseTest.php` run 3× in a row, 47 tests OK each.
+- Merge risk: Medium: consumers of `spl\Http` that read `$response->body` as a decoded
+  array or rely on unlimited request time break, but there are no callers in this repo, the
+  break is listed in the PR, and every failure surfaces as an exception or type error
+  rather than wrong data.
 
 ## Outcome
 
