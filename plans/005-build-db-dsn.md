@@ -218,6 +218,12 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
 - PDO DSN strings are built with `sprintf` from decoded host/db; a `;` in a decoded value could
   inject DSN options. DSNs come from trusted config (`DB_DSN`); pre-existing behaviour.
 - MySQL/Postgres/SQL Server DSN paths are only checked through `makeDSN()`; no live server.
+- `PDO::PARAM_BOOL` is only verified on SQLite. pdo_pgsql sends bools as `t`/`f`, so a PHP bool
+  bound to a Postgres INTEGER column now fails where `true` (`'1'`) used to work; BOOLEAN columns
+  now work where `false` (`''`) used to fail. pdo_mysql's default emulated prepares inline `0`/`1`.
+  From driver knowledge, not tested here.
+- Consumers running PHPStan now get typed `DB::` calls, which can surface new errors in their code
+  (e.g. passing an int as the statement). Intended.
 
 ## Review
 
@@ -227,6 +233,22 @@ The binding, `getInfo()` and docblock fixes are independent one-liners with test
   checked names only, not "matching parameters" (now compares parameter names). Verified codebase
   claims: `parse_url('http://:80')` is false, `file:///` already parses, only `makeDSN()` calls
   `parseURL()`, `src/Log.php:17-21` holds the `@method static` pattern. No ❌, so no second pass.
+
+- Code review: self-conducted (no subagent tool in this session), roles `general` and `risk`
+  (`risk` because the diff changes public library APIs, URL parsing of config input and SQL
+  parameter binding), 1 round against references/CODE-REVIEW.md. Fixed: ℹ️ SQLite branch comment
+  in `makeDSN()` didn't mention `:memory:`; ⚠️ (risk) Postgres `PARAM_BOOL` behaviour change was
+  unrecorded, now under Risks and the PR's Breaking changes. Considered and rejected: DSN option
+  injection via a decoded `;` in host/db (pre-existing: the old code decoded before parsing, so
+  `%3B` already reached the DSN; config is trusted); password echoed in "Invalid database
+  configuration" (pre-existing, out of scope, in Risks); `sqlite:////x` parsing as host `x`
+  (unrealistic input). Spec check: every MUST traced to a passing test (StrTest parseURL/buildURL
+  cases, ConnectionTest DSN/SQLite/binding/getInfo cases, DBTest) plus the throwaway PHPStan run;
+  the `Connection::getLastError()` docblock change serves the docblock MUST (PHPStan rejected a
+  bare `array` in `@method`).
+- Merge risk: Medium: bool binding changes the SQL sent for every bool parameter on every driver,
+  and only SQLite is tested here; limited because bools were mis-bound before (`false` as `''`)
+  and the change is a one-line revert.
 
 ## Outcome
 

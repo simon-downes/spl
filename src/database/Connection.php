@@ -142,8 +142,8 @@ class Connection {
 
             case static::TYPE_SQLITE:
 
-                // no host (sqlite:///path) means an absolute path,
-                // otherwise (sqlite://localhost/path) it's relative to SPL_ROOT
+                // :memory: is never a file; otherwise no host (sqlite:///path) means an
+                // absolute path and a host (sqlite://localhost/path) means relative to SPL_ROOT
                 if ($dsn->db === ':memory:') {
                     $path = ':memory:';
                 }
