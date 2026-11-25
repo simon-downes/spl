@@ -1,6 +1,6 @@
 # 007 — CLI colours, end of input, exit codes and generated help
 
-Status: building
+Status: reviewing
 Branch: build-it/007-cli (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/007-cli
 
