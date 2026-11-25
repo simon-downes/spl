@@ -1,6 +1,6 @@
 # 004 — Error, exception and shutdown handlers; CLI stderr; log path resolution
 
-Status: planning
+Status: building
 Branch: build-it/004-error-handling (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/004-error-handling
 
@@ -44,3 +44,140 @@ Codebase facts:
 - Setup leftovers: `vendor/`, `.php-cs-fixer.cache`, `.phpunit.cache` (gitignored).
 - Failing before this work: none (cs 0 files, PHPStan 0 errors, 60 tests pass).
 - Not included: `prompts/` (untracked in the user's checkout, unrelated).
+
+## Decisions
+
+| #  | Decision | Chosen | Rejected | Why | Source |
+|----|----------|--------|----------|-----|--------|
+| D1 | PHP warnings/notices/deprecations | `set_error_handler()` in `init()` only when `SPL_DEBUG`; converts to `ErrorException` only if `error_reporting() & $severity` (honours `@`); otherwise returns `false` | always convert; leave as-is | Debug should fail loudly; production keeps PHP's default handling | user |
+| D2 | Uncaught Throwables after `init()` | `set_exception_handler()` routing to `SPL::error()` | only `SPL::run()`'s catch | Scripts that call `init()` directly get the same logging/output | user |
+| D3 | Fatal errors | `register_shutdown_function()` checking `error_get_last()` for E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR; logs via `Log` and shows page/STDERR; no double handling or recursion | none | Memory/time-limit fatals are otherwise never logged with the request ID | user |
+| D4 | CLI error output | `SPL::error()` also writes the `util\Debug` trace to STDERR in the CLI, except when the log destination already is the terminal | log only | With `APP_LOG_FILE` set a failing command prints nothing today | user |
+| D5 | Relative log paths | `init()`'s resolution (relative -> `SPL_ROOT`) takes effect; `php` keeps meaning `error_log()`; missing directory is created; `Log` works without `init()` | status quo | `logs/app.log` resolves against `public/` under `php -S` and the write fails (verified by user) | user |
+| D6 | error.php escaping | `htmlspecialchars(..., ENT_QUOTES \| ENT_SUBSTITUTE, 'UTF-8')` on class, message, code, file, line, trace file/line/class/type/function | none | Exception messages often contain user input (XSS on the debug page) | user |
+| D7 | How `init()` passes the resolved path to `Log` | new `Log::setFile(?string $file)` static setter; `Log::message()` uses explicit `$file`, else the set value, else `env('APP_LOG_FILE')`; `null` resets to the env fallback | write back into `$_ENV['APP_LOG_FILE']`; `Log` resolving relative paths against `SPL_ROOT` itself | Keeps env as the no-init fallback (D5) without mutating config; `Log` stays independent of `SPL_ROOT`, which tests must never define | self |
+| D8 | Where the log directory is created | in `Log::message()` before each file write: `is_dir($dir) \|\| @mkdir($dir, 0777, true)`, then `file_put_contents()` reports any failure as today | only in `init()` | Covers explicit `$file` paths and a directory removed at runtime; `@` avoids a race warning when two requests create it at once; umask applies to 0777 | self |
+| D9 | Handler entry points | public static `SPL::handleError()`, `SPL::handleException()`, `SPL::handleShutdown()` (docblock `@internal`), registered as `[static::class, '...']` | closures inside `init()` | Directly callable from tests without `init()` (brief testing notes); visible in stack traces | self |
+| D10 | Detecting "log destination is the terminal" | new `Log::usesErrorLog(string $level): bool` (level passes `APP_LOG_LEVEL` and destination is `''`/`php`); `SPL::error()` skips the STDERR write when `SPL_CLI && Log::usesErrorLog('ERROR') && ini_get('error_log') === ''` | always print and skip logging; check only `APP_LOG_FILE` | Keeps the prefixed log line with request ID; with `APP_LOG_LEVEL=CRITICAL` nothing is logged, so the trace must still be printed | self |
+| D11 | Failures inside `SPL::error()` | re-entrancy flag `protected static bool $handling`; a Throwable from `Log::error()` -> `error_log()` the trace plus the logging failure (counts as terminal output for D10); any other Throwable while formatting/rendering -> `error_log()` a one-line summary of both; still exits as requested. A re-entrant call or a fatal seen by the shutdown handler while `$handling` is true -> one-line `error_log()` only | let it propagate | A throw from the exception handler becomes a PHP fatal and loses the original error | self |
+| D12 | Shutdown exit status | `handleShutdown()` calls `SPL::error($e, 0)`; PHP keeps its fatal status 255 | `exit(1)` in the shutdown function | `exit` would skip shutdown functions registered after ours (apps, libraries) | self |
+| D13 | Memory headroom for memory-exhausted fatals | reserve 32 KB in `init()` (`protected static ?string $reserved`), released at the top of `handleShutdown()` | none | Exhaustion by many small allocations can leave no room to format and log; same mechanism as Symfony's ErrorHandler | self |
+| D14 | Test seams | end-to-end tests run fixture scripts with `proc_open(PHP_BINARY)` in a temp app root (`tests/SPLTest.php`); `Log` and `handleError()` unit-tested in-process (no `init()`); error.php with `#[RunInSeparateProcess]` (`tests/ErrorPageTest.php`) | `#[RunInSeparateProcess]` for everything | Exit codes, STDERR and real fatals can only be observed from outside the process; `exit()` kills a PHPUnit child | self |
+| D15 | Handler registration order | at the end of `init()`, after `SPL_DEBUG` is defined and the log file set | first thing in `init()` | `SPL::error()`/error.php need `SPL_DEBUG`; an `.env` parse error before that stays with `SPL::run()`'s catch as today | self |
+
+## Requirements
+
+- MUST, when `SPL_DEBUG` is true, convert reported warnings/notices/deprecations to `ErrorException`, and leave `@`-suppressed or unreported ones alone.
+  - AC: `SPLTest`: debug fixture doing `echo $undefined;` exits 1 and STDERR contains `ErrorException` and `Undefined variable`; the same with `@$undefined` prints its marker and exits 0.
+  - AC: `SPLTest`: `SPL::handleError(E_WARNING, 'msg', 'f.php', 7)` throws `ErrorException` with severity `E_WARNING`, file `f.php`, line 7; with `error_reporting(E_ALL & ~E_WARNING)` it returns `false`.
+- MUST NOT install the error handler when `SPL_DEBUG` is false.
+  - AC: fixture with `APP_DEBUG=false` doing `echo $undefined;` prints its marker and exits 0.
+- MUST route uncaught Throwables after `SPL::init()` (without `SPL::run()`) to `SPL::error()`.
+  - AC: fixture `init()` + `throw new RuntimeException('boom')` exits 1; the log file has `[ERROR]`, the fixture's `SPL_REQUEST_ID` and `boom`.
+- MUST log fatal errors at shutdown with the request ID and show the trace on STDERR (CLI) / the error page (web).
+  - AC: fixture exhausting `memory_limit` via many small allocations: log file has the request ID and `Allowed memory size` once; STDERR contains `ErrorException` and `Allowed memory size`; exit code 255.
+  - AC (manual): `php -S` fixture route that exhausts memory returns HTML containing `Allowed memory size` and the log file under the app root gets the entry.
+- MUST handle each error once and never recurse if `SPL::error()` fails.
+  - AC: in the uncaught-exception and fatal fixtures the log file contains exactly one `Message:` line.
+  - AC: debug fixture whose `APP_LOG_FILE` is under a regular file (unwritable) exits 1 and STDERR contains the original message and the logging failure, and no `PHP Fatal error`.
+- MUST, in the CLI, write the formatted trace to STDERR when the log destination is not the terminal, and not print it twice when it is.
+  - AC: fixture with `APP_LOG_FILE=logs/app.log`: STDERR contains `RuntimeException {` and `boom`.
+  - AC: fixtures with no `APP_LOG_FILE` and with `APP_LOG_FILE=php`: STDERR contains `boom` exactly once.
+  - AC: fixture with `APP_LOG_LEVEL=critical`: STDERR still contains `boom`.
+- MUST resolve a relative `APP_LOG_FILE` against `SPL_ROOT` (not cwd), create the missing directory, and keep `php` meaning `error_log()`.
+  - AC: fixture run with cwd = another temp dir and `APP_LOG_FILE=logs/app.log` (no `logs/`): `<root>/logs/app.log` gets the entry; cwd stays empty. Fails before the fix.
+  - AC: `APP_LOG_FILE=php` fixture creates no `<root>/php`.
+- MUST keep `Log` usable without `SPL::init()`.
+  - AC: `LogTest`: with `$_ENV['APP_LOG_FILE']` = temp file, `Log::info()` appends a prefixed line; with no destination and `ini_set('error_log', <tmp>)`, the line lands in `<tmp>`; an explicit `$file` beats `setFile()`; `setFile(<dir>/a/b/x.log)` creates `a/b`; `usesErrorLog()` reflects level and destination.
+- MUST HTML-escape every exception value the error page prints.
+  - AC: `ErrorPageTest` (separate process, `SPL_DEBUG` true): `ErrorException('<script>alert("x")</script>', 0, E_WARNING, '/tmp/<b>.php', 3)` renders `&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;` and `/tmp/&lt;b&gt;.php`, never `<script>` or `<b>`; with `SPL_DEBUG` false the message is absent.
+
+Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` escaping, router/`App`, CLI command handling, changing PHP ini settings (`display_errors`, `log_errors`), README/AGENTS/CONTRIBUTING.
+
+## Design
+
+### Overview
+
+`SPL::init()` finishes by passing the resolved log path to `Log::setFile()`, reserving 32 KB, and registering three static handlers: `handleError` (debug only), `handleException` and `handleShutdown`. All three funnel into `SPL::error()`, which formats once with `util\Debug`, logs, then shows STDERR (CLI, unless already on the terminal) or error.php (web), guarded by a re-entrancy flag with an `error_log()` fallback.
+
+### Code structure
+
+- `src/Log.php`: `protected static ?string $file = null`; `setFile(?string)`; `usesErrorLog(string $level): bool`; a protected destination lookup (explicit > set > env); directory creation before the write.
+- `src/SPL.php`: `init()` tail; `$handling`, `$reserved` statics; `handleError()`, `handleException()`, `handleShutdown()`; `error()` rewritten per D10/D11. `render()` untouched (bootstrap-env-str lane).
+- `src/error.php`: an `$h = static fn (mixed $v): string => htmlspecialchars((string) $v, ...)` helper used for every echoed value.
+- New tests (all new files): `tests/LogTest.php`, `tests/SPLTest.php` (fixture runner helper inside the class), `tests/ErrorPageTest.php` (src/error.php has no class, so the page gets a descriptive name).
+
+### Data flow
+
+- Uncaught exception (CLI): PHP -> `handleException($e)` -> `error($e, 1)` -> `Debug::toString` -> `Log::error` (file) -> STDERR trace -> `exit(1)`. Shutdown sees no fatal.
+- Warning in debug: PHP -> `handleError` throws `ErrorException` -> caller or `handleException`.
+- Fatal: PHP fatal -> shutdown -> release reserve -> `error_get_last()` type in mask -> `$handling` ? one-line `error_log()` : `error(new ErrorException(msg, 0, type, file, line), 0)`.
+- Log write fails in debug: `file_put_contents` warning -> `ErrorException` out of `Log::error` -> caught in `error()` -> `error_log($trace)` + `error_log('Unable to write log: ...')` -> no STDERR duplicate when the `error_log` ini is unset.
+
+### Config
+
+- `APP_LOG_FILE`: relative now resolves against `SPL_ROOT` after `init()`; `php`/empty = `error_log()`; directory auto-created.
+
+## Milestones
+
+### [ ] M1 — Relative log paths resolve against SPL_ROOT
+
+- **Approach:** Bug fix: first write `tests/SPLTest.php` with a fixture runner (writes `<root>/.env` and `<root>/run.php` requiring `dirname(__DIR__) . '/vendor/autoload.php'`, runs `proc_open([PHP_BINARY, run.php])` with a separate cwd, returns exit code/stdout/stderr; temp dirs removed in `tearDown()`), and the relative-path test; see it fail. Then add `Log::setFile()`, the destination lookup and directory creation (D7, D8), `Log::usesErrorLog()`, and the `init()` tail calling `Log::setFile()` (no resolution for `''`/`php`). Add `tests/LogTest.php` following `tests/util/EnvTest.php` (temp files, `$_ENV` cleanup, reset `Log::setFile(null)` and the `error_log` ini in `tearDown()`).
+- **Test seam:** fixture process (`SPLTest`); `Log` public static API (`LogTest`).
+- **Edge cases:** `APP_LOG_FILE=php` -> `error_log()`, no file; absolute path unchanged; unset -> `error_log()`.
+- **Deliverable:** after `init()` a relative `APP_LOG_FILE` is written under `SPL_ROOT`, its directory created.
+- **Verify:** `vendor/bin/phpunit tests/LogTest.php tests/SPLTest.php` passes (relative-path test failed before the fix); `composer check` passes.
+- **Outcome:**
+
+### [ ] M2 — CLI errors reach STDERR once, with a safe fallback
+
+- **Approach:** Rewrite `SPL::error()` per D10/D11: `$handling` guard, `Log::error()` in try/catch with `error_log()` fallback, `fwrite(STDERR, $trace . "\n")` in the CLI unless already on the terminal, outer catch -> one-line `error_log()`, `finally` resets `$handling`, then `exit`. Until M3 the fixtures wrap their code in `try { ... } catch (Throwable $e) { SPL::error($e); }`.
+- **Test seam:** fixture process STDERR/exit code.
+- **Edge cases:** no `APP_LOG_FILE` / `php` -> printed once; `APP_LOG_LEVEL=critical` -> printed; unwritable log in debug -> fallback, exit 1.
+- **Deliverable:** a failing CLI script shows the trace on the terminal exactly once.
+- **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; `composer check` passes.
+- **Outcome:**
+
+### [ ] M3 — Exception and error handlers
+
+- **Approach:** Add `handleException()` (calls `static::error($e)`) and `handleError()` (D1), registered at the end of `init()` (D15); error handler only when `SPL_DEBUG`. Switch M2 fixtures to uncaught throws.
+- **Test seam:** fixture process; `SPL::handleError()` called directly in-process.
+- **Edge cases:** `@` suppression; `APP_DEBUG=false` leaves warnings alone.
+- **Deliverable:** `init()`-only scripts log uncaught exceptions and, in debug, fail on warnings.
+- **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; `composer check` passes.
+- **Outcome:**
+
+### [ ] M4 — Fatal errors handled at shutdown
+
+- **Approach:** Add `handleShutdown()` (D3, D11-D13) and the 32 KB reserve; register in `init()`. Fixture: `ini_set('memory_limit', '16M')` then grow an array of small strings forever.
+- **Test seam:** fixture process (log file, STDERR, exit code 255).
+- **Edge cases:** non-fatal last error (warning) -> ignored; fatal while `$handling` -> one-line `error_log()`.
+- **Deliverable:** memory-exhausted scripts are logged once with the request ID and shown on STDERR.
+- **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; manual `php -S` fixture: a route exhausting memory returns the error page and logs under the app root.
+- **Outcome:**
+
+### [ ] M5 — Escape the error page
+
+- **Approach:** Bug fix: write `tests/ErrorPageTest.php` (`#[RunInSeparateProcess]`, define `SPL_DEBUG`, set `$error`, `ob_start()`, `require` src/error.php) and see it fail; then add the `$h` helper in src/error.php and use it for every echoed value.
+- **Test seam:** rendered HTML of src/error.php.
+- **Deliverable:** the debug error page shows exception data as text.
+- **Verify:** `vendor/bin/phpunit tests/ErrorPageTest.php` passes (failed before); `composer check` passes.
+- **Outcome:**
+
+## Deviations
+
+## Risks
+
+- PHP's own fatal output (`display_errors`/`log_errors`) still appears alongside SPL's handling; ini settings are out of scope.
+- In non-debug mode a failing log write is only a PHP warning, so the error may be missing from the log file (it still reaches STDERR in the CLI).
+
+## Review
+
+- Plan review: 1 pass, self-conducted (no subagent tool in this session) against references/PLAN-REVIEW.md. Findings: ℹ️ new test files not marked new (fixed in Code structure); ℹ️ `tests/ErrorPageTest.php` breaks the mirror-by-class naming (explained in Code structure). Codebase claims re-checked: SPL.php:42-75/164-181, Log.php:68-95, App.php:81, error.php echo sites, check commands. No ❌, so no second pass.
+
+## Outcome
+
+PR: pending
+CI: pending
+
+## Follow-ups
