@@ -147,7 +147,7 @@ test class per covered `src/` class, mirrored under `tests/`.
 
 ## Milestones
 
-### [ ] M1 — Stable PHP 8.4 tooling with a running PHPUnit suite
+### [x] M1 — Stable PHP 8.4 tooling with a running PHPUnit suite
 
 - **Approach:** Edit `composer.json` per D1–D4, D11, D15 (`require-dev` adds `phpunit/phpunit
   ^12`; `autoload-dev`; scripts `test`, `check`). Run `composer update`, then tighten the
@@ -160,7 +160,12 @@ test class per covered `src/` class, mirrored under `tests/`.
 - **Deliverable:** `composer test` runs PHPUnit 12 and passes; tooling is stable.
 - **Verify:** `composer validate --strict` OK; `composer show | grep -E 'dev-|x-dev'` empty;
   `composer test` OK; `composer cs-check` exit 0.
-- **Outcome:**
+- **Outcome:** Resolved stable: php-cs-fixer 3.95.32, phpstan 2.3.7, strict-rules 2.1.2,
+  deprecation-rules 2.0.6, phpunit 12.5.45, twig 3.31.1. `composer validate --strict` valid; JSON
+  versions containing `dev`: 0. `composer test`: OK (7 tests, 16 assertions). `composer cs-check`:
+  0 of 19 files. CLI.php style commit is separate (`style(cli): ...`). Stable PHPStan 2.3.7 reports
+  3 errors the dev build did not (Str.php:283, Connection.php:285, 313); moved to M2 (see
+  Deviations).
 
 ### [ ] M2 — Deprecation and PHPStan fixes
 
@@ -195,6 +200,13 @@ test class per covered `src/` class, mirrored under `tests/`.
 - **Outcome:**
 
 ## Deviations
+
+- M1/M2: stable PHPStan 2.3.7 reports 3 errors beyond the 7 known ones:
+  `Str.php:283` (float array key in `sizeFormat()`), `Connection.php:285, 313` (`fetchAll()`
+  compared with `false`, which PHP 8 never returns). Zero errors is a MUST, so M2 fixes them with
+  behaviour-preserving edits: `(int)` on `$pow` (whole-number float keys already truncate to the
+  same int), and dropping the dead `false` checks. Scope grows by two small edits in files
+  otherwise out of scope.
 
 ## Risks
 
