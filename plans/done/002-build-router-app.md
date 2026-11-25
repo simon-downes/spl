@@ -288,8 +288,8 @@ PHPStan `[OK] No errors`, PHPUnit OK 102 tests, 203 assertions); random-order se
 999, 1234 OK; `php -S` + curl check (M4 Outcome). Not verified: header output inside PHPUnit
 (CLI `header()` is a no-op; covered by the curl check instead); behaviour behind Apache/nginx.
 
-PR: pending
-CI: pending
+PR: https://github.com/simon-downes/spl/pull/5
+CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
