@@ -14,7 +14,8 @@ use BadMethodCallException;
  * Log messages can be directed to error_log() or a file. The destination is, in order: the $file
  * argument, the file set with setFile() (SPL::init() sets it from APP_LOG_FILE, resolved against
  * SPL_ROOT), or the raw APP_LOG_FILE environment variable. An empty destination or 'php' means
- * error_log(). Missing directories are created before writing to a file.
+ * error_log(). Missing directories are created before writing to a file; if that fails an
+ * E_USER_WARNING gives the reason and the message isn't written.
  * Log level can be controlled via APP_LOG_LEVEL environment variable.
  *
  * @method static void debug(string $message, string $file = '') Log a debug message
@@ -98,10 +99,19 @@ class Log {
             return;
         }
 
-        // create the directory if needed - if that fails then file_put_contents() reports the problem
+        // create the directory if needed - @ because another request may create it at the same time
         $dir = dirname($file);
         if (!is_dir($dir)) {
-            @mkdir($dir, 0777, true);
+
+            error_clear_last();
+
+            if (!@mkdir($dir, 0777, true) && !is_dir($dir)) {
+                // report why, as file_put_contents() would only say "No such file or directory"
+                $reason = error_get_last()['message'] ?? 'unknown error';
+                trigger_error("Unable to create log directory {$dir}: {$reason}", E_USER_WARNING);
+                return;
+            }
+
         }
 
         file_put_contents($file, $output, FILE_APPEND | LOCK_EX);
@@ -123,6 +133,8 @@ class Log {
      * Checks if a message at the given level would be written with error_log().
      *
      * True when the level passes APP_LOG_LEVEL and the default destination is error_log().
+     *
+     * @internal Used by SPL::report() to avoid printing an error twice in the CLI.
      */
     public static function usesErrorLog(string $level = 'INFO'): bool {
 
@@ -141,9 +153,11 @@ class Log {
     }
 
     /**
-     * Checks if a destination means error_log().
+     * Checks if a destination means error_log(): empty or 'php'.
+     *
+     * @internal Used by SPL::init() so it doesn't resolve these values as paths.
      */
-    protected static function isErrorLog(string $file): bool {
+    public static function isErrorLog(string $file): bool {
 
         return empty($file) || ($file == 'php');
 

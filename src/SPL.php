@@ -82,8 +82,8 @@ class SPL {
 
         $log_file = (string) env('APP_LOG_FILE', '');
 
-        // not an absolute path so make it relative to the root directory ('php' means error_log())
-        if ($log_file && $log_file != 'php' && substr($log_file, 0, 1) != '/') {
+        // a relative path is made relative to the root directory, unless it means error_log()
+        if (!Log::isErrorLog($log_file) && !static::isAbsolutePath($log_file)) {
             $log_file = SPL_ROOT . '/' . $log_file;
         }
 
@@ -186,8 +186,10 @@ class SPL {
      * For CLI requests the formatted error is also written to STDERR, unless the log already
      * went there (error_log() with no error_log ini setting).
      *
-     * If the log can't be written the error goes to error_log() instead. If handling the error
-     * fails, or an error occurs while one is being handled, a one-line summary goes to error_log().
+     * If writing the log throws (in debug mode, where the write failure's warning becomes an
+     * ErrorException) the error goes to error_log() instead. Outside debug mode a failed write is
+     * only reported by PHP's own warning. If handling the error fails, or an error occurs while
+     * one is being handled, a one-line summary goes to error_log().
      *
      * Will exit the application with the provided exit code unless exit is 0.
      */
@@ -306,6 +308,17 @@ class SPL {
     protected static function summary(Throwable $error): string {
 
         return sprintf('%s: %s in %s:%d', get_class($error), $error->getMessage(), $error->getFile(), $error->getLine());
+
+    }
+
+    /**
+     * Checks if a path is absolute: starts with / or \, or a Windows drive such as C:\ or C:/.
+     *
+     * The leading \ also covers UNC paths (\\server\share).
+     */
+    protected static function isAbsolutePath(string $path): bool {
+
+        return (bool) preg_match('#^([/\\\\]|[a-z]:[/\\\\])#i', $path);
 
     }
 
