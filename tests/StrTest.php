@@ -59,4 +59,114 @@ final class StrTest extends TestCase {
         $this->assertSame($expected, Str::ordinal($n));
     }
 
+    public function testParseURLReturnsAllComponents(): void {
+        $this->assertSame(
+            [
+                'scheme' => 'https',
+                'host'   => 'example.com',
+                'port'   => 8080,
+                'user'   => 'user',
+                'pass'   => 'pass',
+                'path'   => '/path',
+                'query'  => ['a' => '1', 'b' => 'x&y'],
+            ],
+            Str::parseURL('https://user:pass@example.com:8080/path?a=1&b=x%26y'),
+        );
+    }
+
+    public function testParseURLFillsMissingPartsFromDefaults(): void {
+        $this->assertSame(
+            [
+                'scheme' => 'mysql',
+                'host'   => 'db',
+                'port'   => 3306,
+                'user'   => '',
+                'pass'   => '',
+                'path'   => '',
+                'query'  => [],
+            ],
+            Str::parseURL('mysql://db', ['port' => 3306]),
+        );
+    }
+
+    public function testParseURLReturnsNullForInvalidURL(): void {
+        $this->assertNull(Str::parseURL('http://:80'));
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function encodedCredentialsProvider(): array {
+        return [
+            'encoded slash'    => ['mysql://u:p%2Fss@host/db', 'u', 'p/ss'],
+            'encoded hash'     => ['mysql://u:p%23ss@host/db', 'u', 'p#ss'],
+            'encoded at'       => ['mysql://u:p%40ss@host/db', 'u', 'p@ss'],
+            'literal plus'     => ['mysql://u:p+ss@host/db', 'u', 'p+ss'],
+            'encoded user'     => ['mysql://u%40x:p%3Ass@host/db', 'u@x', 'p:ss'],
+            'everything mixed' => ['mysql://u%40x:p%2Fs%23s%2B@host/db', 'u@x', 'p/s#s+'],
+        ];
+    }
+
+    #[DataProvider('encodedCredentialsProvider')]
+    public function testParseURLDecodesCredentials(string $url, string $user, string $pass): void {
+        $parts = Str::parseURL($url);
+
+        $this->assertIsArray($parts);
+        $this->assertSame($user, $parts['user']);
+        $this->assertSame($pass, $parts['pass']);
+        $this->assertSame('host', $parts['host']);
+        $this->assertSame('/db', $parts['path']);
+    }
+
+    public function testParseURLDecodesHostAndPathOnce(): void {
+        $parts = Str::parseURL('pgsql://my%2Dhost/my%20db%2541');
+
+        $this->assertIsArray($parts);
+        $this->assertSame('my-host', $parts['host']);
+        // %2541 is an encoded '%41' and must not be decoded a second time into 'A'
+        $this->assertSame('/my db%41', $parts['path']);
+    }
+
+    public function testParseURLAcceptsEmptyAuthority(): void {
+        $parts = Str::parseURL('sqlite:///var/data/app.db', ['host' => 'fallback']);
+
+        $this->assertIsArray($parts);
+        $this->assertSame('sqlite', $parts['scheme']);
+        $this->assertSame('fallback', $parts['host']);
+        $this->assertSame('/var/data/app.db', $parts['path']);
+    }
+
+    public function testParseURLRejectsFourSlashes(): void {
+        // only exactly three slashes mean an empty authority; four must not turn 'abs' into the host
+        $this->assertNull(Str::parseURL('sqlite:////abs/path.db'));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function roundTripProvider(): array {
+        return [
+            'host and path'       => ['mysql://h/db'],
+            'full'                => ['mysql://user:secret@db.example.com:3307/app'],
+            'encoded credentials' => ['mysql://u%40x:p%2Fs%23s%2B@host/db'],
+            'user only'           => ['pgsql://admin@host/db'],
+            'empty authority'     => ['sqlite:///var/x.db'],
+        ];
+    }
+
+    #[DataProvider('roundTripProvider')]
+    public function testBuildURLRoundTripsParseURL(string $url): void {
+        $parts = Str::parseURL($url);
+
+        $this->assertIsArray($parts);
+        $this->assertSame($url, Str::buildURL($parts, true));
+    }
+
+    public function testBuildURLMasksPasswordByDefault(): void {
+        $parts = Str::parseURL('mysql://user:p%2Fss@host/db');
+
+        $this->assertIsArray($parts);
+        $this->assertSame('mysql://user:<password>@host/db', Str::buildURL($parts));
+    }
+
 }
