@@ -55,16 +55,17 @@ Codebase facts:
 | D7 | EOF in `select()` | Return `$default` when non-null; otherwise throw `RuntimeException('Unexpected end of input')` | Return null; keep looping | User decision; every loop iteration reads a line, so EOF always ends the loop | user |
 | D8 | Output after EOF | Print a newline (`PHP_EOL`) to STDOUT when EOF ends a prompt | Print nothing | The prompt was printed without a newline; without one, the next output (or the shell prompt) runs onto the prompt line | self |
 | D9 | Invalid `select()` choice message | Stays on STDOUT | STDERR | It's part of the interactive dialogue next to the prompt, not a program error | self |
-| D10 | Exit codes | `handle()` returns `never`: it calls `exit()` with the handler's code (null -> 0) | Return the code and have `SPL::run()` call `exit()` | Keeps the change inside CLI.php (SPL.php belongs to the error-handling PR); no SPL.php edit needed | self |
-| D11 | Handler return validation | Non-int/non-null result, or an int outside 0-255, throws `RuntimeException` naming the command | Cast/ignore | `exit(256)` exits 0, silently reporting success | self |
+| D10 | Exit codes | `handle()` returns `never`: it calls `exit()` with the code `dispatch()` returns (see D11) | Return the code and have `SPL::run()` call `exit()` | Keeps the change inside CLI.php (SPL.php belongs to the error-handling PR); no SPL.php edit needed | self |
+| D11 | Handler return value (revised after the independent review) | Used as the exit code only when the handler declares an `int` or `?int` (`int|null`) return type, checked with `ReflectionFunction` on `Closure::fromCallable($handler)` (covers closures, functions, `[obj, 'm']`, `'Class::m'` and invokable objects); null -> 0 and an int outside 0-255 throws `RuntimeException` naming the command. Handlers with no return type or any other type (`void`, `mixed`, `string`, unions...) exit 0 whatever they return | Honour any `?int` result and throw for other values (the original D11) | Arrow functions return their expression, so `fn() => file_put_contents(...)` exited with the byte count and `fn() => print(...)` with 1, with no message; `exit(256)` would exit 0, so out-of-range ints still throw | user |
 | D12 | commands.php format | `name => ['description' => string, 'handler' => callable]` only; no BC | Also accept bare callables | User decision | user |
 | D13 | Validation failures | Thrown as `RuntimeException` naming the command and the problem, before any command runs | Print to STDERR and exit | They are programming errors; `SPL::run()` already routes Throwables to `SPL::error()` (log + exit 1) | self |
-| D14 | Other entry checks | Also reject a non-array entry and a non-string or empty name; extra keys are ignored | Reject unknown keys | Same failure mode as a bad handler; ignoring extras keeps the format open (a typo in a required key is still caught) | self |
+| D14 | Other entry checks | Also reject a non-array entry, an empty name and an integer key (the message explains that PHP turns numeric names such as `'2024'` into integer keys, as it does for an entry with no name); extra keys are ignored | Reject unknown keys | Same failure mode as a bad handler; ignoring extras keeps the format open (a typo in a required key is still caught) | self |
 | D15 | User-defined `help` | Allowed: it replaces the built-in (validated like any entry) and runs when no command is given | Reserve the name | Lets an app customise help; existing commands.php files (e.g. the AGENTS.md example) define `help` | self |
 | D16 | Help format | `Available commands:` then one line per command, sorted by name (`ksort`, string), names padded to the longest + 2 spaces, name in green; the built-in `help` is listed with `List available commands`; arguments to `help` are ignored | Per-command usage | Matches the user's "sorted, aligned" spec with no new config | self |
-| D17 | Unknown command output | STDERR: `Error: Unknown command '<name>'` (red) and `Run 'help' to see available commands.`; exit 1 | STDOUT | User decision | user |
+| D17 | Unknown command output | STDERR: `Error: Unknown command '<name>'` (red) and `Run 'help' to see available commands.` (never coloured); exit 1 | STDOUT | User decision | user |
 | D18 | Missing commands.php | Still throws `RuntimeException('Commands file not found: ...')` | Fall back to only `help` | Unchanged behaviour; a missing file is almost always a wrong `SPL_ROOT` | self |
 | D19 | Test seams | Protected static `$stdin`/`$stderr` (null = STDIN/STDERR) and protected `dispatch(array $argv, string $commands_file): int` called by `handle()`; a test subclass `tests/CLIHarness.php` exposes them. Real TTY and real `exit()` covered by child PHP processes via `proc_open()` | `#[RunInSeparateProcess]` | Separate-process tests can't feed STDIN or observe `exit()`; child processes can, and a pty descriptor gives a real terminal | self (seam named by user) |
+| D20 | Colours-on tests in-process | `CLIHarness::$terminals` (null = real check) overrides `useColours()` to treat the listed streams as colour terminals, so `style()` output and `printError()`'s per-stream choice are tested exactly; the real `stream_isatty()`/`NO_COLOR` check stays covered by the pty tests | More pty child tests | Reading a pty directly raises EIO, and the child can't make its STDERR a terminal without it; the seam also runs where ptys are unavailable | self |
 
 ## Requirements
 
@@ -80,16 +81,18 @@ Codebase facts:
   - AC: empty STDIN: `prompt('Name', 'bob')` returns `'bob'`, `prompt('Name')` returns `''`, `confirm('Ok?', false)` returns `false`, `confirm('Ok?')` returns `true`; each prints the prompt followed by a newline.
 - MUST make `select()` return its non-null default on EOF and otherwise throw; it never loops forever.
   - AC: STDIN `"zz\n"` then EOF with default `'g'` returns `'g'`; with no default throws `RuntimeException` `Unexpected end of input`.
-- MUST exit the process with the handler's return code (null -> 0).
-  - AC: child process running `CLI::handle()` exits 3 for a handler returning 3, 0 for one returning null; `dispatch()` returns the same values in-process.
-  - AC: a handler returning `'x'` or `256` makes `dispatch()` throw `RuntimeException` naming the command.
+- MUST exit the process with the return code of a handler declared `: int` or `: ?int` (null -> 0), and with 0 for any other handler.
+  - AC: child process running `CLI::handle()` exits 3 for an `?int` handler returning 3, 0 for one returning null, and 0 for an untyped `fn() => print("hi\n")`; `dispatch()` returns the same values in-process.
+  - AC: `dispatch()` returns 0 for untyped handlers returning 5, `'x'` or 300, and for `void`, `mixed`, `string` and `int|string` handlers; it returns the code for `int`, `?int` and `int|null` closures, an `int` invokable object, a `?int` `[obj, 'm']` and an `int` `'Class::m'` handler.
+  - AC: an `int`/`?int` handler returning 300, 256 or -1 makes `dispatch()` throw `RuntimeException` naming the command.
 - MUST accept only the `['description' => string, 'handler' => callable]` format and throw a `RuntimeException` naming the bad entry otherwise.
-  - AC: missing `handler`, non-callable `handler`, missing or non-string `description`, a non-array entry, and an integer key each throw with a message containing the command name (or key) and the commands file path; no handler runs. An entry with an extra key loads and runs.
+  - AC: missing `handler`, non-callable `handler`, missing or non-string `description`, a non-array entry, an empty name, and an integer key (from `'2024'` or a missing name, with the numeric-name explanation) each throw with a message containing the command name (or key) and the commands file path; no handler runs. An entry with an extra key loads and runs.
 - MUST provide a built-in `help` listing all commands, sorted and aligned, run when no command is given; a user `help` entry replaces it.
   - AC: commands `zeta` and `alpha:long` -> output `Available commands:\n  alpha:long  <desc>\n  help        List available commands\n  zeta        <desc>\n` (colours off) for both `[]` args and `['help']`; exit code 0.
   - AC: a user `help` entry runs instead, and with no command given.
 - MUST write unknown-command errors to STDERR, nothing to STDOUT, and exit 1.
   - AC: `dispatch(['cli', 'nope'])` returns 1, STDOUT empty, STDERR `Error: Unknown command 'nope'\nRun 'help' to see available commands.\n`; the child process exits 1 with that STDERR.
+  - AC: when STDERR is a colour terminal only the `Error:` line is red; when only STDOUT is, STDERR is plain.
 
 Out of scope: `SPL::error()`'s CLI output (error-handling PR); argument parsing; a public
 STDERR print method for handlers; README/AGENTS docs (Phase 3).
@@ -113,11 +116,12 @@ the exit code.
   - `protected static function useColours($stream): bool` — false when `NO_COLOR` is non-empty, else `stream_isatty($stream)`.
   - `protected static function processTokens(string $text, bool $colours): string` — callback replaces known tokens with the code or `''`, returns unknown matches unchanged.
   - `protected static function style(string $text, string $token, bool $colours): string` — literal text wrapped in one token's code and reset (or returned as is).
-  - `protected static function printError(string $text): void` — writes a line of markup to STDERR (seam), colours decided for that stream.
+  - `protected static function printError(string $message, string $hint = ''): void` — writes the message literally to STDERR (seam), red if colours are on for that stream, then the hint uncoloured.
+  - `protected static function returnsExitCode(callable $handler): bool` — true when the handler declares an `int`/`?int` return type (D11).
   - `protected static function readLine(): ?string` — `null` on EOF (after printing `PHP_EOL`).
   - `public static function handle(array $argv): never`, `protected static function dispatch(array $argv, string $commands_file): int`, `protected static function loadCommands(string $commands_file): array`, `protected static function printHelp(array $commands): void`.
-- `tests/CLIHarness.php` (new): `final class CLIHarness extends CLI` exposing `setStreams()`, `resetStreams()` and `dispatch()` publicly. Not picked up as a test (no `Test.php` suffix).
-- `tests/CLITest.php` (new): `final class CLITest` following tests/util/EnvTest.php (temp files via `tempnam`, cleanup in tearDown). setUp sets `NO_COLOR=1` with `putenv()` so in-process output is deterministic even when phpunit runs in a terminal; tearDown restores the original value. Child-process tests write a runner script to a temp dir that requires `vendor/autoload.php`, defines `SPL_ROOT` as that dir and calls `CLI::handle($argv)` (avoiding `SPL::init()`/`SPL::run()`, which the error-handling PR is changing), and use `proc_open()`; the pty tests capture output with `ob_start()` inside the child and write it to a STDERR pipe (reading a pty directly raises an EIO notice), and skip when the platform has no pty support.
+- `tests/CLIHarness.php` (new): `final class CLIHarness extends CLI` exposing `setStreams()` (no arguments restores STDIN/STDERR) and `dispatch()` publicly, plus `$terminals` to fake colour terminals (D20). Not picked up as a test (no `Test.php` suffix).
+- `tests/CLITest.php` (new): `final class CLITest` following tests/util/EnvTest.php (temp files via `tempnam`, cleanup in tearDown). setUp sets `NO_COLOR=1` with `putenv()` so in-process output is deterministic even when phpunit runs in a terminal; tearDown restores the original value. Child-process tests write a runner script to a temp dir that requires `vendor/autoload.php`, defines `SPL_ROOT` as that dir and calls `CLI::handle($argv)` (avoiding `SPL::init()`/`SPL::run()`, which the error-handling PR is changing), and use `proc_open()`; the pty tests capture output with `ob_start()` inside the child and write it to a STDERR pipe (reading a pty directly raises an EIO notice), and skip when `@proc_open()` returns false because no pty can be opened (no `openpty()`, e.g. Windows, or none available, e.g. a sandbox without devpts).
 
 ### Error handling
 
@@ -158,20 +162,37 @@ the exit code.
 
 ## Deviations
 
+- After the PR was opened the user revised D11 (see Review, "Independent review (post-PR)"): returns are only honoured from handlers typed `int`/`?int`, instead of from every handler.
+
 ## Risks
 
 - Every existing consumer's `config/commands.php` breaks until converted (accepted by the user; called out in the PR).
-- pty tests are skipped where `proc_open()` lacks pty support (e.g. some macOS builds); the colour-on path is then only covered on Linux.
+- pty tests are skipped where `proc_open()` can't open a pty (no `openpty()`, e.g. Windows, or a sandbox without devpts); the real `stream_isatty()`/`NO_COLOR` path is then untested, though `style()` and the per-stream choice are still covered in-process (D20).
 
 ## Review
 
 - Plan review: one self-conducted pass (no subagent tool in this session) against PLAN-REVIEW.md. Fixed: ⚠️ D3 `$_ENV ?? getenv` would let an `EGPCS` php.ini snapshot override test `putenv()` (now `getenv()` only); ⚠️ child runner depended on `SPL::init()`, which another PR owns (now defines `SPL_ROOT`); ℹ️ no AC for the literal prompt default (D5) or for ignored extra keys (D14) (added); ℹ️ no edge case for a token-like unknown command name (added to M3). No ❌, so no second pass.
 - Code review: `general` and `risk` (the diff changes a public library API, the commands.php file format, process exit codes and STDERR output), one round each, self-conducted as separate passes against CODE-REVIEW.md (no subagent tool in this session). Fixed: ℹ️ `printError()` docblock said "in red if STDERR is a terminal" but `NO_COLOR` also applies (reworded). Checked and not a finding: `exit()` inside `SPL::run()`'s try isn't caught (PHP 8.4 exit isn't a Throwable); `expectOutputString('')` is still verified when an expected exception is thrown (confirmed with a throwaway test), so the invalid-entry tests do prove no handler runs; temp files are removed in tearDown in reverse creation order; echoing a user-typed command name literally to STDERR only reaches the user's own terminal. Risk noted for the PR: arrow-function handlers now leak their implicit return value into the exit code (e.g. `fn() => DB::execute(...)` returns a row count, `fn() => true` throws), covered by the Breaking changes section. Spec check: every MUST traces to a test in tests/CLITest.php (colours: `testTerminalOutputReplacesOnlyKnownTokens`, `testNoColorDisablesColoursOnTerminal`; tokens: `testPrintlnLeaves...`, `testSelectListsOptionKeysLiterally`; EOF: prompt/confirm/select EOF tests; exit codes: `testHandleExitsWithCommandExitCode`, `testInvalidExitCodeThrows`; format: `testInvalidEntryThrowsBeforeAnyCommandRuns`; help: `testBuiltInHelp...`, `testUserDefinedHelpReplacesBuiltIn`; STDERR: `testUnknownCommandWritesToStderr`) and `grep posix_ src/CLI.php` is empty.
+### Independent review (post-PR)
+
+An independent `general` + `risk` review of the PR (b2fd88f). Each finding and the resolution:
+
+- ⚠️ pty tests' skip never fired: `catch (ValueError)` was dead code, since PHP 8.4's `proc_open()` warns and returns false when there's no `openpty()` (Windows, not macOS) or no pty can be opened (e.g. a sandbox without devpts). Fixed: `runOnTerminal()` uses `@proc_open()` and calls `markTestSkipped()` with `error_get_last()`'s message when it returns false; plan and PR text no longer blame macOS. Verified by forcing `proc_open()` to fail with `ulimit -n 12`: the old test failed (`false is of type resource` plus a warning), the new one skips with no warning reported. A pty-specific failure (`Could not open PTY`) couldn't be produced in the container; it takes the same `false` path.
+- ⚠️ No test of `style()`'s colours-on output or of `printError()` deciding colour from STDERR. Fixed with D20's `CLIHarness::$terminals` seam: `testSelectHighlightsDefaultOnColourTerminal`, `testPromptHighlightsDefaultOnColourTerminal`, `testHelpHighlightsNamesOnColourTerminal` and `testUnknownCommandColoursFollowStderr` (STDERR terminal -> red error line; only STDOUT terminal -> plain STDERR). The reviewer's two mutations (`style()` returning `bold . $text`, `printError()` using `useColours(STDOUT)`) now fail 4 and 2 tests.
+- ℹ️ The `Run 'help' ...` hint was red too. Fixed: `printError($message, $hint)` colours only the message (D17); covered by `testUnknownCommandColoursFollowStderr`, which failed before the change.
+- ℹ️ Numeric-string names such as `'2024'` were rejected with "name must be a non-empty string". Fixed: integer keys get "command names can't be numeric: PHP turns a key like '2024' into an integer (an entry with no name gets an integer key too)", and an empty name gets "name must not be empty" (D14); new `invalidEntryProvider` cases, which failed before the change. Follow-up removed.
+- ℹ️ The `handle()` docblock didn't mention the arrow-function return trap. Resolved by the D11 revision below; the docblock now states that only `int`/`?int` handlers set the exit code and why.
+- ❓ Arrow-function handlers leaking an int into the exit code. User decision: D11 revised, returns are honoured only from handlers declaring `int`/`?int` (checked by reflection), every other handler exits 0; null -> 0 and out-of-range ints still throw. Tests: `testExitCodeHonouredOnlyForIntReturnType` (17 cases: untyped arrow fn returning 5 -> 0, `: int` 3 -> 3, `: ?int` null -> 0, `void` -> 0, `mixed`/`string`/unions -> 0, invokable, `[obj, 'm']` and `'Class::m'` handlers), `testInvalidExitCodeThrows` (`: int` 300, `: ?int` 256, `: int` -1) and the `untyped` `CLI::handle()` child case (`fn() => print("hi\n")` exits 0); 9 of the 17 cases and the child case failed before the change (wrong code, or a throw for string results and 300). Implemented as `ReflectionFunction` on `Closure::fromCallable($handler)`, which reports the declared return type for functions, closures, methods and invokable objects alike.
+- ❓ Home for `tests/CLIHarness.php`. User decision: leave it at `tests/` root (no convention yet).
+- Cross-PR: #7 makes `SPL::error()` print the trace to STDERR in the CLI, so validation errors reach the terminal once it's merged; nothing to change here.
+
+Checks after the fixes: cs clean, PHPStan 0 errors, 126 tests / 352 assertions pass.
+
 - Merge risk: Medium: every consumer's `config/commands.php` and any code relying on `handle()` returning breaks until updated, but it fails loudly (a validation error naming the entry, exit 1) and only on the CLI entry point; web requests don't touch this code.
 
 ## Outcome
 
-Delivered all three milestones in src/CLI.php with tests/CLITest.php (42 tests) and tests/CLIHarness.php. Final `composer check`: cs clean, PHPStan 0 errors, 102 tests / 279 assertions pass; CLITest also passes when phpunit itself runs in a pty (`script -qec`). Manual end-to-end run through `SPL::run()` recorded under M3. Not verified: the pty tests on macOS (they skip if `proc_open()` has no pty support). No SPL.php change was needed.
+Delivered all three milestones in src/CLI.php with tests/CLITest.php (42 tests, 66 after the post-PR review fixes) and tests/CLIHarness.php. Final `composer check`: cs clean, PHPStan 0 errors, 102 tests / 279 assertions pass; CLITest also passes when phpunit itself runs in a pty (`script -qec`). Manual end-to-end run through `SPL::run()` recorded under M3. Not verified: the pty tests on macOS or Windows (on Windows they skip, as PHP has no pty support there). No SPL.php change was needed.
 
 PR: https://github.com/simon-downes/spl/pull/9
 CI: none (the repository has no CI checks)
@@ -181,4 +202,3 @@ CI: none (the repository has no CI checks)
 - A public method for handlers to print errors to STDERR (e.g. `CLI::error()`), so commands can follow the same convention.
 - `select()` compares the default to option keys with `===`, so an int key `1` with default `'1'` (or vice versa) isn't highlighted, and it returns the typed input as a string even for int keys (pre-existing).
 - `-h`/`--help` options could alias the `help` command.
-- Numeric-string command names (`'123'`) become int array keys and are rejected as non-string names; the message could say so.
