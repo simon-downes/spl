@@ -234,7 +234,7 @@ content-length, and cookie options with HttpOnly + SameSite=Lax defaults. Eviden
 non-`php -S` SAPIs (FPM/Apache), which populate REQUEST_URI/HTTP_HOST the same way per PHP
 docs but weren't run.
 
-PR: pending
+PR: https://github.com/simon-downes/spl/pull/3
 CI: pending
 
 ## Follow-ups
