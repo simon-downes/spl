@@ -54,7 +54,7 @@ class Debug {
         $getters = [
             'is_null'     => 'getNull',
             'is_bool'     => 'getBoolean',
-            'is_integer'  => 'getInteger',
+            'is_int'      => 'getInteger',
             'is_float'    => 'getFloat',
             'is_string'   => 'getString',
             'is_array'    => 'getArray',
@@ -209,7 +209,6 @@ class Debug {
                 E_USER_ERROR        => 'USER_ERROR',
                 E_USER_WARNING      => 'USER_WARNING',
                 E_USER_NOTICE       => 'USER_NOTICE',
-                E_STRICT            => 'STRICT',
                 E_RECOVERABLE_ERROR => 'RECOVERABLE_ERROR',
                 E_DEPRECATED        => 'DEPRECATED',
                 E_USER_DEPRECATED   => 'USER_DEPRECATED',
@@ -325,7 +324,6 @@ class Debug {
         $item = '';
 
         foreach ($this->getClassProperties($r) as $p) {
-            $p->setAccessible(true);
             $item .= sprintf("%s%s: %s\n", str_repeat("\t", $this->depth), $p->name, $this->toString($p->getValue($obj)));
         }
 

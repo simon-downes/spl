@@ -38,7 +38,7 @@ class Connection {
      *
      * @var PDO
      */
-    protected PDO $pdo;
+    final protected PDO $pdo;
 
     /**
      * Connection details.
@@ -280,9 +280,7 @@ class Connection {
 
         $statement = $this->query($statement, $params);
 
-        $result = $statement->fetchAll();
-
-        return $result !== false ? $result : [];
+        return $statement->fetchAll();
 
     }
 
@@ -306,13 +304,6 @@ class Connection {
         // now get all the remaining resultsets
         while ($statement->nextRowset()) {
             $result[] = $statement->fetchAll();
-        }
-
-        // convert falses to arrays for consistency
-        foreach ($result as &$rowset) {
-            if ($rowset === false) {
-                $rowset = [];
-            }
         }
 
         return $result;

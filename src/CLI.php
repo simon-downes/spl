@@ -23,21 +23,21 @@ class CLI {
 
     /**
      * Parsed command line options (with dashes).
-     * 
+     *
      * @var array<string, mixed>
      */
     protected static array $options = [];
 
     /**
      * Positional arguments (non-option arguments).
-     * 
+     *
      * @var array<int, string>
      */
     protected static array $args = [];
 
     /**
      * Formatting tokens and their corresponding ANSI escape codes.
-     * 
+     *
      * @var array<string, string>
      */
     protected static array $tokens = [
@@ -53,12 +53,12 @@ class CLI {
         'bright_black' => "\033[90m",
         'bright_red'   => "\033[91m",
         'bright_green' => "\033[92m",
-        'bright_yellow'=> "\033[93m",
+        'bright_yellow' => "\033[93m",
         'bright_blue'  => "\033[94m",
-        'bright_magenta'=> "\033[95m",
+        'bright_magenta' => "\033[95m",
         'bright_cyan'  => "\033[96m",
         'bright_white' => "\033[97m",
-        
+
         // Background colors
         'bg_black'     => "\033[40m",
         'bg_red'       => "\033[41m",
@@ -71,12 +71,12 @@ class CLI {
         'bg_bright_black' => "\033[100m",
         'bg_bright_red'   => "\033[101m",
         'bg_bright_green' => "\033[102m",
-        'bg_bright_yellow'=> "\033[103m",
+        'bg_bright_yellow' => "\033[103m",
         'bg_bright_blue'  => "\033[104m",
-        'bg_bright_magenta'=> "\033[105m",
+        'bg_bright_magenta' => "\033[105m",
         'bg_bright_cyan'  => "\033[106m",
         'bg_bright_white' => "\033[107m",
-        
+
         // Text styles
         'bold'         => "\033[1m",
         'dim'          => "\033[2m",
@@ -85,7 +85,7 @@ class CLI {
         'blink'        => "\033[5m",
         'reverse'      => "\033[7m",
         'hidden'       => "\033[8m",
-        
+
         // Reset
         'reset'        => "\033[0m",
     ];
@@ -102,16 +102,16 @@ class CLI {
     public static function parseArgs(array $argv): array {
         // Skip the first argument (script name)
         array_shift($argv);
-        
+
         static::$options = [];
         static::$args = [];
-        
+
         foreach ($argv as $arg) {
             // Pattern for --option=value or -option=value
             if (preg_match('/^--([^=]+)=(.*)$/', $arg, $matches)) {
                 // Long option with value: --option=value
                 static::$options[$matches[1]] = $matches[2];
-            } 
+            }
             elseif (preg_match('/^-([^=]+)=(.*)$/', $arg, $matches)) {
                 // Short option with value: -option=value
                 static::$options[$matches[1]] = $matches[2];
@@ -132,24 +132,24 @@ class CLI {
                 static::$args[] = $arg;
             }
         }
-        
+
         return static::$options;
     }
-    
+
     /**
      * Check if a specific option exists.
      */
     public static function hasOption(string $name): bool {
         return array_key_exists($name, static::$options);
     }
-    
+
     /**
      * Get the value of a specific option or the default if not found.
      */
     public static function getOption(string $name, mixed $default = null): mixed {
         return static::hasOption($name) ? static::$options[$name] : $default;
     }
-    
+
     /**
      * Get all positional arguments (non-option arguments).
      */
@@ -159,7 +159,7 @@ class CLI {
 
     /**
      * Print a string with formatting tokens.
-     * 
+     *
      * Tokens are in the format [token_name] and will be replaced with
      * the corresponding ANSI escape code if colors are enabled.
      */
@@ -169,7 +169,7 @@ class CLI {
 
     /**
      * Print a string with formatting tokens followed by a newline.
-     * 
+     *
      * Tokens are in the format [token_name] and will be replaced with
      * the corresponding ANSI escape code if colors are enabled.
      */
@@ -186,18 +186,33 @@ class CLI {
 
         if (!$use_colors) {
             // Remove all tokens if colors are disabled
-            return preg_replace('/\[[a-z_]+\]/', '', $text);
+            return (string) preg_replace('/\[[a-z_]+\]/', '', $text);
         }
 
         // Replace tokens with ANSI escape codes
-        return preg_replace_callback(
+        return (string) preg_replace_callback(
             '/\[([a-z_]+)\]/',
-            function($matches) {
+            function ($matches) {
                 $token = $matches[1];
                 return isset(static::$tokens[$token]) ? static::$tokens[$token] : $matches[0];
             },
-            $text
+            $text,
         );
+    }
+
+    /**
+     * Read a line from STDIN with surrounding whitespace removed.
+     *
+     * @throws RuntimeException If STDIN has reached end of input or cannot be read
+     */
+    protected static function readLine(): string {
+        $line = fgets(STDIN);
+
+        if ($line === false) {
+            throw new RuntimeException('Unexpected end of input');
+        }
+
+        return trim($line);
     }
 
     /**
@@ -208,16 +223,16 @@ class CLI {
         if ($default !== '') {
             $prompt .= " [[bright_cyan]{$default}[reset]]";
         }
-        
+
         static::print("{$prompt}: ");
-        
-        $input = trim(fgets(STDIN));
-        
+
+        $input = static::readLine();
+
         // Return default if input is empty
         if ($input === '') {
             return $default;
         }
-        
+
         return $input;
     }
 
@@ -227,105 +242,106 @@ class CLI {
     public static function confirm(string $prompt, bool $default = true): bool {
         $yes = $default ? '[bright_cyan]Y[reset]' : 'y';
         $no = $default ? 'n' : '[bright_cyan]N[reset]';
-        
+
         $input = static::prompt("{$prompt} ({$yes}/{$no})");
-        
+
         if ($input === '') {
             return $default;
         }
-        
+
         return strtolower($input[0]) === 'y';
     }
 
     /**
      * Ask the user to select from a list of options.
-     * 
+     *
      * @param array<int|string, string> $options Array of options to choose from
      */
     public static function select(string $prompt, array $options, mixed $default = null): mixed {
         static::println($prompt);
-        
-        $keys = array_keys($options);
-        
+
+        // compare as strings - input is always a string but option keys may be integers
+        $keys = array_map('strval', array_keys($options));
+
         // Display options
         foreach ($options as $key => $value) {
             $marker = ($key === $default) ? '[bright_cyan]' : '';
             $reset = ($key === $default) ? '[reset]' : '';
             static::println("  [{$marker}{$key}{$reset}] {$value}");
         }
-        
+
         // Add default to prompt if provided
         $default_text = $default !== null ? " [[bright_cyan]{$default}[reset]]" : '';
-        
+
         while (true) {
             static::print("Enter choice{$default_text}: ");
-            
-            $input = trim(fgets(STDIN));
-            
+
+            $input = static::readLine();
+
             // Return default if input is empty and default is provided
             if ($input === '' && $default !== null) {
                 return $default;
             }
-            
+
             // Check if input is a valid option
-            if (in_array($input, $keys)) {
+            if (in_array($input, $keys, true)) {
                 return $input;
             }
-            
+
             static::println("[red]Invalid choice. Please try again.[reset]");
         }
     }
 
     /**
      * Handle command line arguments and execute the appropriate command.
-     * 
+     *
      * @param array<int, string> $argv Command line arguments (typically $argv)
      */
     public static function handle(array $argv): void {
         // Parse arguments
         static::parseArgs($argv);
-        
+
         // Get command name (first positional argument)
         $command_name = static::$args[0] ?? 'help';
-        
+
         // Load commands from config file
         $commands = static::loadCommands();
-        
+
         // Check if command exists
         if (!isset($commands[$command_name])) {
             static::println("[red]Error: Unknown command '{$command_name}'[reset]");
             static::println("Run with 'help' to see available commands.");
             exit(1);
         }
-        
+
         // Get command callable
         $callable = $commands[$command_name];
-        
+
         // Remove command name from arguments
         array_shift(static::$args);
-        
+
         // Execute command
         call_user_func($callable, static::$options, static::$args);
     }
 
     /**
      * Load commands from config/commands.php file.
-     * 
+     *
      * @return array<string, callable> Array of command names and their callables
      */
     protected static function loadCommands(): array {
         $commands_file = SPL_ROOT . '/config/commands.php';
-        
+
         if (!file_exists($commands_file)) {
             throw new RuntimeException("Commands file not found: {$commands_file}");
         }
-        
+
         $commands = require $commands_file;
-        
+
         if (!is_array($commands)) {
             throw new RuntimeException("Commands file must return an array");
         }
-        
+
         return $commands;
     }
 }
