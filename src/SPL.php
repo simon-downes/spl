@@ -30,6 +30,11 @@ use Twig\Environment as TwigEnvironment;
 class SPL {
 
     /**
+     * Error types that stop the script and can only be seen from a shutdown function.
+     */
+    protected const int FATAL_ERRORS = E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR | E_RECOVERABLE_ERROR;
+
+    /**
      * Set while error() is handling an error, so a failure inside it isn't handled recursively.
      */
     protected static bool $handling = false;
@@ -46,8 +51,8 @@ class SPL {
      * SPL_DEBUG is determined from APP_DEBUG or APP_ENV environment variables.
      * A relative APP_LOG_FILE is resolved against SPL_ROOT and becomes the default log destination.
      *
-     * Registers handlers so uncaught exceptions go to error() and, in debug mode, PHP warnings,
-     * notices and deprecations are thrown as ErrorException.
+     * Registers handlers so uncaught exceptions and fatal errors go to error() and, in debug mode,
+     * PHP warnings, notices and deprecations are thrown as ErrorException.
      */
     public static function init(string $directory = '', bool $load_env = true): void {
 
@@ -90,6 +95,8 @@ class SPL {
         }
 
         set_exception_handler([static::class, 'handleException']);
+
+        register_shutdown_function([static::class, 'handleShutdown']);
 
     }
 
@@ -240,6 +247,26 @@ class SPL {
     public static function handleException(Throwable $error): void {
 
         static::error($error);
+
+    }
+
+    /**
+     * Shutdown function registered by init(); passes fatal errors (out of memory, time limit
+     * exceeded, etc.) to error() as an ErrorException.
+     *
+     * Doesn't exit, so PHP keeps its exit status and later shutdown functions still run.
+     *
+     * @internal
+     */
+    public static function handleShutdown(): void {
+
+        $error = error_get_last();
+
+        if ($error === null || !($error['type'] & static::FATAL_ERRORS)) {
+            return;
+        }
+
+        static::error(new ErrorException($error['message'], 0, $error['type'], $error['file'], $error['line']), 0);
 
     }
 

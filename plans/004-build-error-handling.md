@@ -61,7 +61,7 @@ Codebase facts:
 | D10 | Detecting "log destination is the terminal" | new `Log::usesErrorLog(string $level): bool` (level passes `APP_LOG_LEVEL` and destination is `''`/`php`); `SPL::error()` skips the STDERR write when `SPL_CLI && Log::usesErrorLog('ERROR') && ini_get('error_log') === ''` | always print and skip logging; check only `APP_LOG_FILE` | Keeps the prefixed log line with request ID; with `APP_LOG_LEVEL=CRITICAL` nothing is logged, so the trace must still be printed | self |
 | D11 | Failures inside `SPL::error()` | re-entrancy flag `protected static bool $handling`; a Throwable from `Log::error()` -> `error_log()` the trace plus the logging failure (counts as terminal output for D10); any other Throwable while formatting/rendering -> `error_log()` a one-line summary of both; still exits as requested. A re-entrant call or a fatal seen by the shutdown handler while `$handling` is true -> one-line `error_log()` only | let it propagate | A throw from the exception handler becomes a PHP fatal and loses the original error | self |
 | D12 | Shutdown exit status | `handleShutdown()` calls `SPL::error($e, 0)`; PHP keeps its fatal status 255 | `exit(1)` in the shutdown function | `exit` would skip shutdown functions registered after ours (apps, libraries) | self |
-| D13 | Memory headroom for memory-exhausted fatals | reserve 32 KB in `init()` (`protected static ?string $reserved`), released at the top of `handleShutdown()` | none | Exhaustion by many small allocations can leave no room to format and log; same mechanism as Symfony's ErrorHandler | self |
+| D13 | Memory headroom for memory-exhausted fatals | no reserved buffer | reserve 32 KB in `init()`, released in `handleShutdown()` (Symfony's ErrorHandler approach) | M4 evidence: the out-of-memory fixture (many small allocations) is formatted, logged and printed without a reserve, so the buffer would be dead code (see Deviations) | self |
 | D14 | Test seams | end-to-end tests run fixture scripts with `proc_open(PHP_BINARY)` in a temp app root (`tests/SPLTest.php`); `Log` and `handleError()` unit-tested in-process (no `init()`); error.php with `#[RunInSeparateProcess]` (`tests/ErrorPageTest.php`) | `#[RunInSeparateProcess]` for everything | Exit codes, STDERR and real fatals can only be observed from outside the process; `exit()` kills a PHPUnit child | self |
 | D15 | Handler registration order | at the end of `init()`, after `SPL_DEBUG` is defined and the log file set | first thing in `init()` | `SPL::error()`/error.php need `SPL_DEBUG`; an `.env` parse error before that stays with `SPL::run()`'s catch as today | self |
 
@@ -98,12 +98,12 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ### Overview
 
-`SPL::init()` finishes by passing the resolved log path to `Log::setFile()`, reserving 32 KB, and registering three static handlers: `handleError` (debug only), `handleException` and `handleShutdown`. All three funnel into `SPL::error()`, which formats once with `util\Debug`, logs, then shows STDERR (CLI, unless already on the terminal) or error.php (web), guarded by a re-entrancy flag with an `error_log()` fallback.
+`SPL::init()` finishes by passing the resolved log path to `Log::setFile()` and registering three static handlers: `handleError` (debug only), `handleException` and `handleShutdown`. All three funnel into `SPL::error()`, which formats once with `util\Debug`, logs, then shows STDERR (CLI, unless already on the terminal) or error.php (web), guarded by a re-entrancy flag with an `error_log()` fallback.
 
 ### Code structure
 
 - `src/Log.php`: `protected static ?string $file = null`; `setFile(?string)`; `usesErrorLog(string $level): bool`; a protected destination lookup (explicit > set > env); directory creation before the write.
-- `src/SPL.php`: `init()` tail; `$handling`, `$reserved` statics; `handleError()`, `handleException()`, `handleShutdown()`; `error()` rewritten per D10/D11. `render()` untouched (bootstrap-env-str lane).
+- `src/SPL.php`: `init()` tail; `$handling` static and `FATAL_ERRORS` constant; `handleError()`, `handleException()`, `handleShutdown()`; `error()` rewritten per D10/D11. `render()` untouched (bootstrap-env-str lane).
 - `src/error.php`: an `$h = static fn (mixed $v): string => htmlspecialchars((string) $v, ...)` helper used for every echoed value.
 - New tests (all new files): `tests/LogTest.php`, `tests/SPLTest.php` (fixture runner helper inside the class), `tests/ErrorPageTest.php` (src/error.php has no class, so the page gets a descriptive name).
 
@@ -111,7 +111,7 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 - Uncaught exception (CLI): PHP -> `handleException($e)` -> `error($e, 1)` -> `Debug::toString` -> `Log::error` (file) -> STDERR trace -> `exit(1)`. Shutdown sees no fatal.
 - Warning in debug: PHP -> `handleError` throws `ErrorException` -> caller or `handleException`.
-- Fatal: PHP fatal -> shutdown -> release reserve -> `error_get_last()` type in mask -> `$handling` ? one-line `error_log()` : `error(new ErrorException(msg, 0, type, file, line), 0)`.
+- Fatal: PHP fatal -> shutdown -> `error_get_last()` type in mask -> `$handling` ? one-line `error_log()` : `error(new ErrorException(msg, 0, type, file, line), 0)`.
 - Log write fails in debug: `file_put_contents` warning -> `ErrorException` out of `Log::error` -> caught in `error()` -> `error_log($trace)` + `error_log('Unable to write log: ...')` -> no STDERR duplicate when the `error_log` ini is unset.
 
 ### Config
@@ -149,12 +149,12 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 
 ### [ ] M4 — Fatal errors handled at shutdown
 
-- **Approach:** Add `handleShutdown()` (D3, D11-D13) and the 32 KB reserve; register in `init()`. Fixture: `ini_set('memory_limit', '16M')` then grow an array of small strings forever.
+- **Approach:** Add `handleShutdown()` (D3, D11-D13); register in `init()`. Fixtures: `ini_set('memory_limit', '16M')` then grow a linked list of small objects forever (exhausts on a small allocation); `set_time_limit(1)` and loop.
 - **Test seam:** fixture process (log file, STDERR, exit code 255).
 - **Edge cases:** non-fatal last error (warning) -> ignored; fatal while `$handling` -> one-line `error_log()`.
 - **Deliverable:** memory-exhausted scripts are logged once with the request ID and shown on STDERR.
 - **Verify:** `vendor/bin/phpunit tests/SPLTest.php` passes; manual `php -S` fixture: a route exhausting memory returns the error page and logs under the app root.
-- **Outcome:**
+- **Outcome:** `SPL::handleShutdown()` and `FATAL_ERRORS` in src/SPL.php, registered in `init()`. `testFatalErrorIsHandledAtShutdown` (out of memory, out of memory in debug, time limit): exit 255, `ErrorException`/`"ERROR"` severity and the PHP message on STDERR, logged exactly once with the request ID. The planned 32 KB reserve was tried and removed: with it set to an empty string the out-of-memory cases still passed. `composer check` OK (88 tests). Manual `php -S` check: see Outcome of M5 / Review (done with the browser evidence).
 
 ### [ ] M5 — Escape the error page
 
@@ -165,6 +165,8 @@ Out of scope: Twig config key in `SPL::render()`, `Response::fromThrowable()` es
 - **Outcome:**
 
 ## Deviations
+
+- M4: D13 reversed: no 32 KB memory reserve. The out-of-memory fixture passes without it, so it would be untestable dead code. No scope change.
 
 ## Risks
 

@@ -160,6 +160,40 @@ final class SPLTest extends TestCase {
         $this->assertStringNotContainsString('ErrorException', $result['stderr']);
     }
 
+    /**
+     * @param array<string, string> $env
+     */
+    #[DataProvider('fatalErrorProvider')]
+    public function testFatalErrorIsHandledAtShutdown(string $code, string $message, array $env): void {
+        $result = $this->runFixture("SPL::init(__DIR__);\necho SPL_REQUEST_ID;\n{$code}", $env + ['APP_LOG_FILE' => 'logs/app.log']);
+
+        // PHP's own status for a fatal error
+        $this->assertSame(255, $result['exit'], $result['stderr']);
+
+        $this->assertStringContainsString('ErrorException {', $result['stderr']);
+        $this->assertStringContainsString('"ERROR"', $result['stderr']);
+        $this->assertStringContainsString($message, $result['stderr']);
+
+        $log = $this->readLog('logs/app.log');
+        $this->assertStringContainsString("{$result['stdout']} [ERROR] ErrorException {", $log);
+        $this->assertSame(1, substr_count($log, $message), $log);
+    }
+
+    /**
+     * @return array<string, array{string, string, array<string, string>}>
+     */
+    public static function fatalErrorProvider(): array {
+        // a linked list of small objects, so memory runs out on a small allocation
+        $out_of_memory = 'ini_set("memory_limit", "16M"); $a = null; while (true) { $o = new stdClass(); $o->next = $a; $a = $o; }';
+        $time_limit    = 'set_time_limit(1); while (true) {}';
+
+        return [
+            'out of memory'          => [$out_of_memory, 'Allowed memory size', []],
+            'out of memory in debug' => [$out_of_memory, 'Allowed memory size', ['APP_DEBUG' => 'true']],
+            'time limit'             => [$time_limit, 'Maximum execution time', []],
+        ];
+    }
+
     public function testHandleErrorThrowsErrorException(): void {
         $level = error_reporting(E_ALL);
 
