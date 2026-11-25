@@ -138,14 +138,14 @@ the exit code.
 - **Verify:** `vendor/bin/phpunit tests/CLITest.php` passes (the `[r]` test failed before the fix); `composer check` passes.
 - **Outcome:** `useColours()`, known-token-only `processTokens()`, `style()` and the `$stdin` seam in src/CLI.php; tests/CLIHarness.php and tests/CLITest.php (9 tests). Before the fix, `testPrintlnLeavesUnknownBracketedTextWithColoursOff` printed `a   [Hi] [123]` and the NO_COLOR `0`/`1`/`false` cases printed ANSI. After: CLITest 9/9 (also 9/9 when phpunit itself runs in a pty via `script -qec`), `composer check` OK (69 tests), no `posix_` in CLI.php. One `composer check` run reported a PHPStan failure with no error listed; an immediate rerun and `composer phpstan` reported no errors (likely worker contention with the parallel builds).
 
-### [ ] M2 — End of input in prompt, confirm and select
+### [x] M2 — End of input in prompt, confirm and select
 
 - **Approach:** `readLine()` returns `?string`, printing `PHP_EOL` on EOF; `prompt()` returns `$default` on `null`; `confirm()` maps it through `prompt()`'s `''`; `select()` returns `$default` or throws (D6-D8).
 - **Test seam:** `CLIHarness` with `php://memory` STDIN, output via `expectOutputString`.
 - **Edge cases:** last line without a trailing newline is still read; invalid choices then EOF -> default/throw.
 - **Deliverable:** piped or closed STDIN never throws from prompt/confirm and never hangs select.
 - **Verify:** `vendor/bin/phpunit tests/CLITest.php` passes; `composer check` passes.
-- **Outcome:**
+- **Outcome:** `readLine()` returns `?string` and prints `PHP_EOL` at EOF; prompt/confirm return defaults; select returns its default or throws. 9 new tests (prompt/confirm EOF providers, partial last line, select default and throw after an invalid choice) errored with `Unexpected end of input` before the change; after: CLITest 18/18, `composer check` OK (78 tests, PHPStan 0 errors, cs clean).
 
 ### [ ] M3 — Command format, generated help, exit codes and STDERR errors
 

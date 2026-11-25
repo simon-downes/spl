@@ -4,6 +4,7 @@ namespace spl\tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use spl\CLI;
 use ValueError;
 
@@ -89,6 +90,86 @@ final class CLITest extends TestCase {
         $this->expectOutputString('Style [bold]: ');
 
         $this->assertSame('bold', CLIHarness::prompt('Style', 'bold'));
+    }
+
+    public static function promptAtEndOfInputProvider(): array {
+        return [
+            'default'       => ['Name', 'bob', 'bob', "Name [bob]: \n"],
+            'no default'    => ['Name', '', '', "Name: \n"],
+            'token default' => ['Style', 'bold', 'bold', "Style [bold]: \n"],
+        ];
+    }
+
+    #[DataProvider('promptAtEndOfInputProvider')]
+    public function testPromptReturnsDefaultAtEndOfInput(string $prompt, string $default, string $expected, string $output): void {
+        CLIHarness::setStreams($this->stream());
+        $this->expectOutputString($output);
+
+        $this->assertSame($expected, CLIHarness::prompt($prompt, $default));
+    }
+
+    public function testPromptReadsLastLineWithoutNewline(): void {
+        CLIHarness::setStreams($this->stream(' alice '));
+        $this->expectOutputString('Name: ');
+
+        $this->assertSame('alice', CLIHarness::prompt('Name'));
+    }
+
+    public static function confirmAtEndOfInputProvider(): array {
+        return [
+            'default yes' => [true, "Ok? (Y/n): \n"],
+            'default no'  => [false, "Ok? (y/N): \n"],
+        ];
+    }
+
+    #[DataProvider('confirmAtEndOfInputProvider')]
+    public function testConfirmReturnsDefaultAtEndOfInput(bool $default, string $output): void {
+        CLIHarness::setStreams($this->stream());
+        $this->expectOutputString($output);
+
+        $this->assertSame($default, CLIHarness::confirm('Ok?', $default));
+    }
+
+    public function testConfirmReadsAnswer(): void {
+        CLIHarness::setStreams($this->stream("Yes\n"));
+        $this->expectOutputString('Ok? (y/N): ');
+
+        $this->assertTrue(CLIHarness::confirm('Ok?', false));
+    }
+
+    public function testSelectReturnsDefaultAtEndOfInputAfterInvalidChoice(): void {
+        CLIHarness::setStreams($this->stream("zz\n"));
+        $this->expectOutputString(
+            "Colour\n  [r] Red\n  [g] Green\n"
+            . "Enter choice [g]: Invalid choice. Please try again.\n"
+            . "Enter choice [g]: \n",
+        );
+
+        $this->assertSame('g', CLIHarness::select('Colour', ['r' => 'Red', 'g' => 'Green'], 'g'));
+    }
+
+    public function testSelectThrowsAtEndOfInputWithoutDefault(): void {
+        CLIHarness::setStreams($this->stream("zz\n"));
+
+        ob_start();
+
+        try {
+            CLIHarness::select('Colour', ['r' => 'Red', 'g' => 'Green']);
+            $this->fail('Expected select() to throw at end of input');
+        }
+        catch (RuntimeException $e) {
+            $this->assertSame('Unexpected end of input', $e->getMessage());
+        }
+        finally {
+            $output = ob_get_clean();
+        }
+
+        $this->assertSame(
+            "Colour\n  [r] Red\n  [g] Green\n"
+            . "Enter choice: Invalid choice. Please try again.\n"
+            . "Enter choice: \n",
+            $output,
+        );
     }
 
     public function testTerminalOutputReplacesOnlyKnownTokens(): void {

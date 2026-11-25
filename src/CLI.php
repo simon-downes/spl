@@ -243,13 +243,15 @@ class CLI {
     /**
      * Read a line from STDIN with surrounding whitespace removed.
      *
-     * @throws RuntimeException If STDIN has reached end of input or cannot be read
+     * Returns null at end of input (or if STDIN can't be read), after printing a newline
+     * so following output doesn't continue on the prompt's line.
      */
-    protected static function readLine(): string {
+    protected static function readLine(): ?string {
         $line = fgets(static::$stdin ?? STDIN);
 
         if ($line === false) {
-            throw new RuntimeException('Unexpected end of input');
+            echo PHP_EOL;
+            return null;
         }
 
         return trim($line);
@@ -257,6 +259,8 @@ class CLI {
 
     /**
      * Prompt the user for input.
+     *
+     * Returns the default if the input is empty or STDIN has reached end of input.
      */
     public static function prompt(string $prompt, string $default = ''): string {
         $colours = static::useColours(STDOUT);
@@ -272,8 +276,8 @@ class CLI {
 
         $input = static::readLine();
 
-        // Return default if input is empty
-        if ($input === '') {
+        // Return default if input is empty or there is no more input
+        if ($input === null || $input === '') {
             return $default;
         }
 
@@ -282,6 +286,8 @@ class CLI {
 
     /**
      * Ask the user for confirmation (yes/no).
+     *
+     * Returns the default if the input is empty or STDIN has reached end of input.
      */
     public static function confirm(string $prompt, bool $default = true): bool {
         $yes = $default ? '[bright_cyan]Y[reset]' : 'y';
@@ -299,7 +305,12 @@ class CLI {
     /**
      * Ask the user to select from a list of options.
      *
+     * Asks again after an invalid choice. Returns the default if the input is empty, or if
+     * STDIN reaches end of input and a default was given.
+     *
      * @param array<int|string, string> $options Array of options to choose from
+     *
+     * @throws RuntimeException If STDIN reaches end of input and there is no default
      */
     public static function select(string $prompt, array $options, mixed $default = null): mixed {
         static::println($prompt);
@@ -322,6 +333,15 @@ class CLI {
             echo "Enter choice{$default_text}: ";
 
             $input = static::readLine();
+
+            // no more input so we can't ask again
+            if ($input === null) {
+                if ($default === null) {
+                    throw new RuntimeException('Unexpected end of input');
+                }
+
+                return $default;
+            }
 
             // Return default if input is empty and default is provided
             if ($input === '' && $default !== null) {
