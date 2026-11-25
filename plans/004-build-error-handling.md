@@ -1,6 +1,6 @@
 # 004 — Error, exception and shutdown handlers; CLI stderr; log path resolution
 
-Status: building
+Status: reviewing
 Branch: build-it/004-error-handling (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/004-error-handling
 
