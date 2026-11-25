@@ -87,7 +87,7 @@ strict output. Don't touch README/AGENTS/CONTRIBUTING. No internet in tests.
 - MUST keep `parse_headers()`/`parse_status_line()` public, accepting `HTTP/2` status lines and header blocks with a trailing CRLF without warnings.
   - AC: `parse_status_line('HTTP/2 200')` returns `['http_version' => '2', 'status_code' => 200, 'status_message' => '']`; `parse_headers("HTTP/1.1 200 OK\r\nA: b\r\n")` returns `['http' => [...], 'a' => 'b']`; an invalid status line still throws `RuntimeException`.
 - MUST declare `ext-curl` in composer.json `require`, with composer.lock's content-hash updated and no dependency changes.
-  - AC: `composer validate --strict` passes; `git diff master -- composer.lock` changes only `content-hash`.
+  - AC: `composer validate --strict` passes; `git diff master -- composer.lock` changes only `content-hash` and the `platform` list.
 
 Out of scope: persistent curl share handles, retries, associative header arrays, sub-second timeouts, response decompression, other lanes' files, README/AGENTS docs.
 
@@ -138,7 +138,7 @@ raw body.
 
 ## Milestones
 
-### [ ] M1 — Typed response with final-block header parsing
+### [x] M1 — Typed response with final-block header parsing
 
 - **Approach:** Bug-first: write `tests/HttpTest.php` cases for the HTTP/2 status line,
   trailing-CRLF `parse_headers()`, 100-continue and HEAD against the old code and record
@@ -155,7 +155,18 @@ raw body.
 - **Edge cases:** 204/HEAD → body `''`; `100 Continue` → dropped; trailing CRLF / no-colon lines → skipped; refused connection → `RuntimeException` code 7.
 - **Deliverable:** `Http::get()` against the local server returns an `HttpResponse` with the final block's headers.
 - **Verify:** `vendor/bin/phpunit tests/HttpTest.php tests/HttpResponseTest.php` passes; `composer check` passes; `composer validate --strict` passes.
-- **Outcome:**
+- **Outcome:** Added `src/HttpResponse.php`, rewrote `Http::request()` (header callback,
+  D5 method mapping, errno exceptions), explicit verb helpers incl. `head()`, fixed
+  `parse_status_line()`/`parse_headers()`, fixtures `tests/fixtures/http/{router,continue-server}.php`,
+  `tests/HttpTest.php`, `tests/HttpResponseTest.php`, `ext-curl` in composer.json/lock.
+  Bug-first run against the old code (`vendor/bin/phpunit tests/HttpTest.php`): 8 errors,
+  2 failures, 1 warning — `HTTP/2 200` and `HTTP/1.1 204 ` rejected, trailing-CRLF and
+  no-colon `parse_headers()` raised "Undefined array key 1" + TypeError, 100-continue POST
+  returned status 100, refused connection had code 0; old `request('HEAD', …)` threw
+  "end of response with 28 bytes missing". After: HttpTest + HttpResponseTest 27 tests OK;
+  cs-check 0 files; phpstan `[OK] No errors`; `composer test` 87 tests OK; `composer validate --strict`
+  valid; no fixture processes left running. phpstan run with a private `tmpDir`
+  (`-c /tmp/phpstan-006.neon`) because parallel agents corrupt the shared `/tmp/phpstan` cache.
 
 ### [ ] M2 — Timeouts, options and opt-in redirects
 
