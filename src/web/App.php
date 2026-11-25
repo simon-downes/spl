@@ -26,7 +26,7 @@ class App {
      * Matches a route key: a method prefix ("GET", "GET|POST" or "(GET|POST)"), a colon and
      * the path regex.
      */
-    protected const ROUTE_KEY_REGEX = '/^(?:\(([A-Z]+(?:\|[A-Z]+)*)\)|([A-Z]+(?:\|[A-Z]+)*)):(.*)$/sD';
+    private const ROUTE_KEY_REGEX = '/^(?:\(([A-Z]+(?:\|[A-Z]+)*)\)|([A-Z]+(?:\|[A-Z]+)*)):(.*)$/sD';
 
     /**
      * The registered routes.
@@ -98,7 +98,7 @@ class App {
 
         // we pass the request in addition to the route arguments
         // (string-keyed arguments become named arguments)
-        return static::toResponse(call_user_func($handler, $request, ...$args), $request);
+        return self::toResponse(call_user_func($handler, $request, ...$args), $request);
 
     }
 
@@ -107,7 +107,7 @@ class App {
      *
      * @throws UnexpectedValueException If the handler returned an unsupported type
      */
-    protected static function toResponse(mixed $result, Request $request): Response {
+    private static function toResponse(mixed $result, Request $request): Response {
 
         if ($result instanceof Response) {
             return $result;
@@ -122,9 +122,7 @@ class App {
         }
         // nothing to return; 204 responses must not have content headers
         elseif ($result === null) {
-            return (new Response(204))
-                ->setHeader('content-type', null)
-                ->setHeader('content-length', null);
+            return self::noContent();
         }
         // serialise the object itself, jsonSerialize() may return any JSON value
         elseif ($result instanceof JsonSerializable) {
@@ -139,6 +137,26 @@ class App {
             JsonSerializable::class,
             Response::class,
         ));
+
+    }
+
+    /**
+     * Creates a 204 No Content response that is sent without content-type or content-length.
+     */
+    private static function noContent(): Response {
+
+        $response = new class (204) extends Response {
+            public function send(): void {
+                // PHP adds its default content-type to any response that doesn't send one and
+                // header_remove() doesn't stop that, an empty default_mimetype does
+                ini_set('default_mimetype', '');
+                parent::send();
+            }
+        };
+
+        return $response
+            ->setHeader('content-type', null)
+            ->setHeader('content-length', null);
 
     }
 
@@ -193,7 +211,7 @@ class App {
 
             $key = (string) $key;
 
-            if (!preg_match(static::ROUTE_KEY_REGEX, $key, $m)) {
+            if (!preg_match(self::ROUTE_KEY_REGEX, $key, $m)) {
                 throw new InvalidArgumentException(sprintf(
                     'Route "%s" has no valid method prefix; expected e.g. "GET:/path", "GET|POST:/path" or "(GET|POST):/path"',
                     $key,
@@ -238,7 +256,7 @@ class App {
                 // first element is the complete string, we only care about the sub-matches
                 array_shift($parameters);
 
-                return [$handler, static::routeArguments($parameters)];
+                return [$handler, self::routeArguments($parameters)];
 
             }
 
@@ -260,7 +278,7 @@ class App {
      *
      * @return array<int|string, string>
      */
-    protected static function routeArguments(array $captures): array {
+    private static function routeArguments(array $captures): array {
 
         $named = array_filter($captures, 'is_string', ARRAY_FILTER_USE_KEY);
 

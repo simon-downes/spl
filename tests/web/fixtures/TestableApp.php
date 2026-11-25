@@ -29,13 +29,6 @@ final class TestableApp extends App {
         static::addRoutes($routes);
     }
 
-    /**
-     * @return array{0: callable|string, 1: array<int|string, string>}
-     */
-    public static function matchRoute(string $path, string $method): array {
-        return static::match($path, $method);
-    }
-
     public static function dispatchRequest(Request $request): Response {
         return static::dispatch($request);
     }
