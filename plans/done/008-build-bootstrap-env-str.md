@@ -53,12 +53,12 @@ parseURL/buildURL). Tests must not call `SPL::init()` in the main process. No do
 | D1 | How is `SPL_CLI` determined? | `in_array(PHP_SAPI, ['cli', 'phpdbg'], true)` | STDIN resource check; `'cli'` only | STDIN can be closed or redirected in a real CLI run (reproduced). phpdbg runs scripts from a terminal with CLI semantics (no headers), which is what `SPL::run()`/`dd()` use the flag for; `cli-server` stays non-CLI because it serves HTTP | user (phpdbg: self) |
 | D2 | Twig template directory key | `twig.template_path`, default `SPL_ROOT . '/templates'`, no fallback to `twig.templates` | keep `twig.templates`; read both | the documented example config uses `twig.template_path` | user |
 | D3 | Env file syntax to add | optional `export ` prefix; inline `#` comments after unquoted values; matching surrounding `'`/`"` stripped at load time; lines without `=` skipped | status quo | user-reported gaps; quotes stripped at `get()` leak into `${VAR}` copies | user |
-| D4 | Does `Env::get()` keep its own quote stripping? | No: `get()` returns values verbatim apart from true/false/null conversion | keep stripping in `get()` | once the loader unquotes, `get()`-time stripping unquotes a second time (`FOO='"x"'` would come back as `x`), and values from the real environment were already unquoted by the shell or orchestrator that set them | self |
+| D4 | Does `Env::get()` keep its own quote stripping? | Yes (revised after the independent review): `get()` strips one pair of matching surrounding `'`/`"` from every value, then applies true/false/null conversion (so a real-environment `"true"` converts like a file one, D14); the loader's load-time stripping stays | no `get()` stripping (original D4); strip only keys not loaded from a file (static set of loaded keys) | `docker run --env-file` passes values literally, quotes included, so `DB_DSN="sqlite://..."` broke without it. Accepted trade-off: a file value written as `FOO="'bar'"` (or `'"bar"'`) is unquoted twice and comes back as `bar` | user (option b, revises self) |
 | D5 | `${VAR}` interpolation scope | unquoted and double-quoted values only; single-quoted values are literal | interpolate everywhere | dotenv/shell convention, and gives users a way to write a literal `${...}` | self |
 | D6 | What starts an inline comment in an unquoted value? | a `#` preceded by whitespace, evaluated on the raw text after `=` (so `FOO= # note` is empty) | any `#` | keeps `COLOR=#fff` and `URL=http://host/#frag` intact, matching shell word rules | self |
-| D7 | What counts as a quoted value? | trimmed value starts with `'` or `"` and has a matching closing quote followed only by optional whitespace and an optional `# comment`; inner text kept verbatim, no escape sequences | backslash escape support | the parser has never had escapes; one anchored regex keeps it small. A value with no closing quote, or text after it, is treated as unquoted (kept literally, quotes included) | self |
+| D7 | What counts as a quoted value? | trimmed value starts with `'` or `"` and has a matching closing quote followed only by optional whitespace and an optional `# comment`; inner text kept verbatim, no escape sequences | backslash escape support | the parser has never had escapes; one anchored regex keeps it small. A value with no closing quote, or text after it, is treated as unquoted (kept literally, quotes included). If a leading quoted part is followed by other text, the D6 comment rule applies only after that part's closing quote (`QH="a # b" c # d` → `"a # b" c`); with no closing quote it applies to the whole value (`"a # b` → `"a`) | self; comment rule after the closing quote: user (review) |
 | D8 | Lines without `=` or with an empty key | skipped silently | throw; log | `safeLoad()` is best-effort by contract; `Log` belongs to another lane and depends on init state | self |
-| D9 | `uncamelise()` output for non-alphanumerics | each run of characters that are not Unicode letters/digits (`[^\p{L}\p{N}]+`, `_` included) becomes one `_`; no trimming; `uncamelise('helloWorld Foo-Bar')` = `hello_world_foo_bar`. Also fix the first regex's `[A-Z+]` to `[A-Z]+` | ASCII `[^A-Za-z0-9]`; trimming leading/trailing `_` | the function already lower-cases with `mb_strtolower`, so ASCII-only would turn `café-Bar` into `caf__bar`; trimming would change `_private`-style input. `[A-Z+]` matched a literal `+` by accident | self |
+| D9 | `uncamelise()` output for non-alphanumerics | each run of characters that are not Unicode letters, combining marks or digits (`[^\p{L}\p{M}\p{N}]+`, `_` included) becomes one `_`; no trimming; `uncamelise('helloWorld Foo-Bar')` = `hello_world_foo_bar`. Also fix the first regex's `[A-Z+]` to `[A-Z]+` | ASCII `[^A-Za-z0-9]`; trimming leading/trailing `_` | the function already lower-cases with `mb_strtolower`, so ASCII-only would turn `café-Bar` into `caf__bar`; trimming would change `_private`-style input. `\p{M}` keeps decomposed (NFD) accents, e.g. from macOS filenames, attached to their letter (`cafe\u{0301}-Bar` → `cafe\u{0301}_bar`; added after the independent review). `[A-Z+]` matched a literal `+` by accident | self; `\p{M}`: user (review) |
 | D10 | How does `getString()` detect ASCII? | `mb_check_encoding($str, 'ASCII')` first → no label; otherwise `mb_detect_encoding()` over UTF-8, Windows-1252, ISO-8859-1 (strict); `false` → `unknown` | reorder the candidate list | an explicit check doesn't depend on mbstring's candidate scoring (PHP 8.1+ scores candidates rather than taking the first match) | self |
 | D11 | Test seam for `SPL_CLI` | spawn `PHP_BINARY` with `proc_open()` (array command, no shell) running code that closes STDIN, requires `vendor/autoload.php` and prints `var_export(SPL_CLI, true)` | new public helper as a seam; `#[RunInSeparateProcess]` | the bootstrap runs at autoload, before test code, so only a fresh process can close STDIN first; a helper would add public API just for tests | self |
 | D12 | Where does the Twig test live? | new `tests/SPLRenderTest.php`, `#[RunInSeparateProcess]` | `tests/SPLTest.php` | the error-handling lane is likely to create `tests/SPLTest.php`; a separate file avoids a merge conflict | self |
@@ -70,13 +70,13 @@ parseURL/buildURL). Tests must not call `SPL::init()` in the main process. No do
 - MUST define `SPL_CLI` as `true` under the `cli` and `phpdbg` SAPIs regardless of STDIN's state.
   - AC: a PHP subprocess that runs `fclose(STDIN)` before requiring the autoloader prints `true` (tests/BootstrapTest.php).
 - MUST define `SPL_CLI` as `false` under any other SAPI.
-  - AC: manual: `php -S 127.0.0.1:<port> <router>` whose router requires the autoloader and echoes `var_export(SPL_CLI, true)`; `curl` returns `false`.
+  - AC: tests/BootstrapTest.php `testCliIsNotDetectedUnderBuiltInServer` starts `php -S` on a free port with a docroot script that requires the autoloader and echoes `var_export(SPL_CLI, true)` and `PHP_SAPI`; the response is `false cli-server` (skipped if the server can't start).
 - MUST make `SPL::render()` load templates from config `twig.template_path`, defaulting to `SPL_ROOT . '/templates'`, and ignore `twig.templates`.
-  - AC: separate-process tests in tests/SPLRenderTest.php: (a) `template_path` set to a custom dir renders a template there; (b) no key renders from `<root>/templates`; (c) only `twig.templates` set to a dir holding the template throws `Twig\Error\LoaderError`.
+  - AC: separate-process tests in tests/SPLRenderTest.php: (a) `template_path` set to a custom dir renders a template there; (b) no key renders from `<root>/templates`; (c) only `twig.templates` set to a dir holding the template throws `Twig\Error\LoaderError` whose message names the missing default `<root>/templates` directory.
 - MUST accept an optional `export ` prefix in env files.
-  - AC: `export SPL_TEST_EXPORTED=yes` → `Env::get('SPL_TEST_EXPORTED') === 'yes'`.
+  - AC: `export SPL_TEST_EXPORTED=yes` → `Env::get('SPL_TEST_EXPORTED') === 'yes'`; a variable named `export` still loads: `export=1` → `$_ENV['export'] === '1'`, `export export=2` → `'2'`.
 - MUST strip inline comments from unquoted values per D6 and keep `#` inside quoted values.
-  - AC: `A=bar # c` → `bar`; `A=#fff` → `#fff`; `A=http://h/#f` → `http://h/#f`; `A="x # y" # c` → `x # y`; `A='x # y'` → `x # y`.
+  - AC: `A=bar # c` → `bar`; `A=#fff` → `#fff`; `A=http://h/#f` → `http://h/#f`; `A="x # y" # c` → `x # y`; `A='x # y'` → `x # y`; `A="a # b" c # d` → `"a # b" c`; `A="a # b` → `"a`.
 - MUST strip matching surrounding quotes at load time, so `$_ENV` and `${VAR}` copies hold the unquoted value.
   - AC: `Q="quoted value"`, `R=${Q}!` → `$_ENV['Q'] === 'quoted value'`, `Env::get('R') === 'quoted value!'`; `M="unterminated` → `"unterminated` (literal).
 - MUST interpolate `${VAR}` in unquoted and double-quoted values but not in single-quoted values.
@@ -85,10 +85,10 @@ parseURL/buildURL). Tests must not call `SPL::init()` in the main process. No do
   - AC: a file containing `NOT_AN_ASSIGNMENT` loads under PHPUnit's failOnWarning and the other values load.
 - MUST NOT overwrite variables already set in `$_ENV` or the process environment, and MUST keep `Env::get()`'s true/false/null conversion.
   - AC: existing tests testLoadDoesNotOverwriteExistingValues and testGetConvertsTypedStrings pass.
-- MUST return values from the real environment verbatim from `Env::get()` (no quote stripping, D4).
-  - AC: `$_ENV['SPL_TEST_RAW'] = '"kept"'` → `Env::get('SPL_TEST_RAW') === '"kept"'`.
+- MUST strip one pair of matching surrounding quotes in `Env::get()` for every value, including values set directly in the real environment (D4).
+  - AC: `$_ENV['SPL_TEST_RAW'] = '"sqlite://localhost/db/app.db"'` → `Env::get()` returns `sqlite://localhost/db/app.db`; `"'My App'"` → `My App`; `'"true"'` → `true`; `putenv('SPL_TEST_PUTENV="from process"')` → `from process`; mismatched `"half'` is kept; file `SPL_TEST_INNER='"kept"'` → `$_ENV` holds `"kept"`, `Env::get()` returns `kept`.
 - MUST convert each run of non-letter/non-digit characters in `Str::uncamelise()` to `_` (D9).
-  - AC: `helloWorld Foo-Bar` → `hello_world_foo_bar`; `XMLHttpRequest` → `xml_http_request`; `already_snake` → `already_snake`; `café-Bar` → `café_bar`.
+  - AC: `helloWorld Foo-Bar` → `hello_world_foo_bar`; `XMLHttpRequest` → `xml_http_request`; `already_snake` → `already_snake`; `café-Bar` → `café_bar`; NFD `cafe\u{0301}-Bar` → `cafe\u{0301}_bar` and `re\u{0301}sume\u{0301}Draft` → `re\u{0301}sume\u{0301}draft`.
 - MUST remove `Str::xssClean()` and keep `stripControlChars()` and `normaliseLineEndings()`.
   - AC: `method_exists(Str::class, 'xssClean') === false`; `stripControlChars("a\x00b\tc")` → `"ab\tc"`; `normaliseLineEndings("a\r\nb\r\r\r\nc")` → `"a\nb\n\nc"`.
 - MUST show no encoding label for pure-ASCII strings in `Debug::getString()`, and keep the label for other strings.
@@ -108,7 +108,7 @@ comment per D6 and trim) → interpolate unless single-quoted.
 
 ### Code structure
 
-- src/util/Env.php: `safeLoad()` handles line-level rules; `parseValue()` handles value rules and calls a new protected `interpolate()` for `${VAR}` (protected, not private, because the class calls its helpers through `static::`); `get()` loses the quote regex. Docblocks updated.
+- src/util/Env.php: `safeLoad()` handles line-level rules; `parseValue()` handles value rules and calls a new protected `interpolate()` for `${VAR}` (protected, not private, because the class calls its helpers through `static::`); `get()` loses the quote regex (restored after the independent review, see D4). Docblocks updated.
 - src/bootstrap.php: one-line `SPL_CLI` change.
 - src/SPL.php: `render()` config key and its docblock line only.
 - src/Str.php: `uncamelise()` regexes; delete `xssClean()` and its docblock.
@@ -158,23 +158,38 @@ comment per D6 and trim) → interpolate unless single-quoted.
 - tests/StrTest.php is also likely extended by the db-dsn lane; new tests are appended at the end of the class to keep conflicts trivial.
 - tests/SPLRenderTest.php calls `SPL::init($root, false)`; if the error-handling lane changes `init()`'s signature or side effects (e.g. installing handlers), this test may need a trivial follow-up after merge.
 - Camel-case splitting (`([a-z\d])([A-Z])`) stays ASCII-only, so `caféBar` becomes `cafébar`; out of scope (D9 covers only the separator regex).
-- Non-CLI `SPL_CLI` is verified only via the built-in server SAPI, not FPM/Apache (same `PHP_SAPI` mechanism).
+- Non-CLI `SPL_CLI` is verified only via the built-in server SAPI (automated in BootstrapTest), not FPM/Apache (same `PHP_SAPI` mechanism).
 
 ## Review
 
 - Plan review: 1 pass, self-conducted (no subagent tool available in this session) against references/PLAN-REVIEW.md. ⚠️ M3/Requirements AC `caféBar → café_bar` was wrong (camel splitting is ASCII-only, so `éB` never splits) — changed to `café-Bar` and recorded the limitation under Risks. ℹ️ double-negative wording of the overwrite MUST — reworded. ℹ️ merge-conflict exposure in tests/StrTest.php and the SPLRenderTest dependency on `SPL::init()` — added to Risks. No ❌, so no second pass.
 - Code review: 1 round, roles `general` and `risk` (risk applies: env-file input, public library APIs and a config key), both self-conducted against references/CODE-REVIEW.md because no subagent tool is available in this session. Findings: ℹ️ the moved undefined-`${VAR}` error path had no test — added `testLoadThrowsForUndefinedReference` (`composer check`: OK, 85 tests, 182 assertions; PHPStan 0 errors; cs clean). ℹ️ plan Code structure didn't mention the new `interpolate()` helper — updated. Risk pass: no shell/SQL/secrets; the quoted-value regex is lazy but anchored and runs once per env line (developer-controlled, short), no ReDoS concern; breaking changes (xssClean removal, `twig.templates` ignored, `Env::get()` no longer unquoting, quoted `"true"` converted) are listed in the PR. Considered and rejected: making `interpolate()` private (would break `static::` calls from subclasses).
-- Merge risk: Medium: consumers relying on `twig.templates`, `Str::xssClean()` or `Env::get()` unquoting real-environment values break, but the first two fail loudly (Twig `LoaderError`, undefined-method error) and all are listed under Breaking changes; the parser changes are covered by 11 new EnvTest cases.
+- Merge risk: Medium: consumers relying on `twig.templates` or `Str::xssClean()` break, but both fail loudly (Twig `LoaderError`, undefined-method error) and are listed under Breaking changes; the parser changes are covered by new EnvTest cases. (`Env::get()` quote stripping was restored after the independent review, so it is no longer a breaking change.)
+
+### Independent review (post-PR)
+
+Review of 8b18dea (general and risk roles). User decisions applied: D4 revised (option b), comment rule after a closing quote, `\p{M}` in `uncamelise()`, automated cli-server test, `export` edge-case tests, a stronger legacy-key test, and dropping the in-process CLI test.
+
+- ⚠️ `Env::get()` no longer stripped quotes, but `docker run --env-file` passes them through (risk). Fixed per user decision (option b): `get()` strips one matching pair from every value again, before the true/false/null conversion; load-time stripping stays, so `${VAR}` copies are still unquoted. D4 and Requirements updated; removed from Breaking changes. Test: `testGetStripsQuotesFromEnvironmentValues` (`$_ENV` and `putenv()` values; failed first with `'"sqlite://localhost/db/app.db"'`); `testLoadStripsQuotesBeforeStoringAndInterpolating` now pins the accepted double-unquote trade-off (`'"kept"'` → `kept`). Order differs from master (master converted before unquoting), so a real-environment `"true"` now converts like a file one (D14).
+- ⚠️ `uncamelise()` split NFD text (`re\u{0301}sume\u{0301}Draft` → `re_sume_draft`). Fixed: separator class `[^\p{L}\p{M}\p{N}]+`. Test: two NFD cases in `uncamelProvider` (both failed first). D9 updated.
+- ℹ️ The unquoted comment rule cut inside a leading quoted part (`QH="a # b" c # d` → `"a`). Fixed: comment detection starts after a leading quoted part's closing quote, so it gives `"a # b" c`; with no closing quote the rule applies to the whole value. Documented in the `parseValue()` docblock and D7. Test: `testLoadKeepsQuotedPartIntactWhenTextFollowsIt` (failed first with `'"a'`).
+- ℹ️ `SPL_CLI === false` under a non-CLI SAPI had no automated test. Fixed: `testCliIsNotDetectedUnderBuiltInServer` runs `php -S` on an OS-assigned free port and expects `false cli-server`; skips if the server can't start. Mutation check: with bootstrap.php:12 changed to `define('SPL_CLI', true)` it fails with `'true cli-server'`.
+- ℹ️ `testCliIsDetectedInCurrentProcess` couldn't fail under PHPUnit's CLI SAPI. Removed; the closed-STDIN and cli-server tests carry the behaviour.
+- ℹ️ No tests for `export` edge cases. Added `testLoadAcceptsVariableNamedExport` (`export=1`, `export export=2` → key `export`). They passed already (behaviour was right); mutation check: loosening the prefix regex to `/^export\s*/` fails the `export=1` case.
+- ❓/ℹ️ `testRenderIgnoresLegacyTemplatesKey` passed only because the default dir is missing. Fixed: it now asserts the `LoaderError` message names the default `<root>/templates` directory, while `twig.templates` points at a real directory holding the template. Mutation check: reading `twig.templates` in `render()` makes it fail.
+- ℹ️ (risk) `dynamicConstantNames: [SPL_CLI]` in phpstan.neon: confirmed legitimate by the reviewer; no change.
+- Cross-PR: tests/StrTest.php conflicts with #4 and src/SPL.php auto-merges with #7; left for merge time.
+- Checks after the fixes: cs-check clean, PHPStan 0 errors, PHPUnit OK (90 tests, 203 assertions).
 
 ## Outcome
 
-Delivered all six scoped fixes (M1-M3). Evidence: every new bug test failed on the base first (recorded per milestone), and the final `composer check` passes: php-cs-fixer clean, PHPStan 0 errors, PHPUnit OK (85 tests, 182 assertions; base had 60). Non-CLI `SPL_CLI` verified manually under the built-in server SAPI (`false cli-server`). Not verified: FPM/Apache/phpdbg SAPIs (no binaries in the container; same `PHP_SAPI` check).
+Delivered all six scoped fixes (M1-M3). Evidence: every new bug test failed on the base first (recorded per milestone), and the final `composer check` passes: php-cs-fixer clean, PHPStan 0 errors, PHPUnit OK (85 tests, 182 assertions; base had 60). Non-CLI `SPL_CLI` verified manually under the built-in server SAPI (`false cli-server`); automated after the independent review. After the review fixes: OK (90 tests, 203 assertions). Not verified: FPM/Apache/phpdbg SAPIs (no binaries in the container; same `PHP_SAPI` check).
 
 PR: https://github.com/simon-downes/spl/pull/8
 CI: none (the repository has no CI checks)
 
 ## Follow-ups
 
-- Phase 3 docs: AGENTS.md/README still list `Str::xssClean()` and describe env-file syntax and `Env::get()` quote stripping.
+- Phase 3 docs: AGENTS.md/README still list `Str::xssClean()` and describe the old env-file syntax. `Env::get()` still strips one pair of surrounding quotes (now also after load-time unquoting), so docs that say so stay correct.
 - `Str::uncamelise()` camel-case splitting is ASCII-only (`caféBar` → `cafébar`).
 - Env files: no escape sequences or multi-line values.
