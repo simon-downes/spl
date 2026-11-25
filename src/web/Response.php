@@ -8,6 +8,7 @@ namespace spl\web;
 
 use Throwable;
 use Exception;
+use JsonException;
 use BadMethodCallException;
 
 /**
@@ -48,6 +49,7 @@ class Response {
         304 => 'Not Modified',
         305 => 'Use Proxy',
         307 => 'Temporary Redirect',
+        308 => 'Permanent Redirect',
 
         // client error 4xx
         400 => 'Bad Request',
@@ -68,6 +70,8 @@ class Response {
         415 => 'Unsupported Media Type',
         416 => 'Requested Range Not Satisfiable',
         417 => 'Expectation Failed',
+        422 => 'Unprocessable Content',
+        429 => 'Too Many Requests',
 
         // server error 5xx
         500 => 'Internal Server Error',
@@ -112,13 +116,14 @@ class Response {
      *
      * Uses the exception's code as HTTP status if it's a WebException,
      * otherwise defaults to 500 Internal Server Error.
+     * The exception message is HTML-escaped into the body.
      */
     public static function fromThrowable(Throwable $e): static {
 
         $code = $e instanceof WebException ? $e->getCode() : 500;
 
         // TOOD: attempt to render a view
-        $body = sprintf('<h1>%s</h1>', $e->getMessage());
+        $body = sprintf('<h1>%s</h1>', htmlspecialchars($e->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
 
         return (new static($code, $body));
 
@@ -135,9 +140,11 @@ class Response {
      * Creates a JSON response with appropriate content-type header.
      *
      * @param array<mixed> $data Data to be JSON encoded
+     *
+     * @throws JsonException If the data can't be encoded (e.g. malformed UTF-8)
      */
     public static function json(array $data, int $status = 200): static {
-        return new static($status, json_encode($data), 'application/json');
+        return new static($status, json_encode($data, JSON_THROW_ON_ERROR), 'application/json');
     }
 
     /**
@@ -244,7 +251,7 @@ class Response {
         }
 
         $this->headers['content-type'] = "{$content_type}; charset={$charset}";
-        $this->headers['content-length'] = strlen($this->body);
+        $this->headers['content-length'] = (string) strlen($this->body);
 
         return $this;
 

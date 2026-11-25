@@ -2,8 +2,13 @@
 
 namespace spl\tests\web;
 
+use Exception;
+use JsonException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use spl\web\Response;
+use spl\web\WebException;
 
 final class ResponseTest extends TestCase {
 
@@ -60,6 +65,61 @@ final class ResponseTest extends TestCase {
         $response->setHeader('X-Custom', null);
 
         $this->assertNull($response->getHeader('x-custom'));
+    }
+
+    /**
+     * @return array<string, array{0: int, 1: string}>
+     */
+    public static function addedStatusProvider(): array {
+        return [
+            '308' => [308, 'Permanent Redirect'],
+            '422' => [422, 'Unprocessable Content'],
+            '429' => [429, 'Too Many Requests'],
+        ];
+    }
+
+    #[DataProvider('addedStatusProvider')]
+    public function testAddedStatusCodes(int $code, string $message): void {
+        $response = Response::html('', $code);
+
+        $this->assertSame(['code' => $code, 'message' => $message], $response->getStatus());
+    }
+
+    public function testPermanentRedirectStatusIsRedirect(): void {
+        $this->assertTrue(Response::html('', 308)->isRedirect());
+    }
+
+    public function testUnknownStatusCodeIsRejected(): void {
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('299 is not a valid HTTP status code');
+
+        Response::html('', 299);
+    }
+
+    public function testJsonThrowsOnMalformedUtf8(): void {
+        $this->expectException(JsonException::class);
+        $this->expectExceptionMessage('Malformed UTF-8');
+
+        Response::json(['x' => "\xB1\x31"]);
+    }
+
+    public function testFromThrowableEscapesMessage(): void {
+        $response = Response::fromThrowable(WebException::badRequest('<script>alert("x\'1")</script>'));
+
+        $this->assertSame(400, $response->getStatus()['code']);
+        $this->assertSame('<h1>&lt;script&gt;alert(&quot;x&#039;1&quot;)&lt;/script&gt;</h1>', $response->getBody());
+    }
+
+    public function testFromThrowableUsesServerErrorForOtherExceptions(): void {
+        $response = Response::fromThrowable(new RuntimeException('boom'));
+
+        $this->assertSame(500, $response->getStatus()['code']);
+        $this->assertTrue($response->isServerError());
+    }
+
+    public function testContentLengthIsAString(): void {
+        $this->assertSame('3', Response::text('abc')->getHeader('content-length'));
+        $this->assertSame('2', Response::text('é')->getHeader('content-length'));
     }
 
 }

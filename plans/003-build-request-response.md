@@ -157,7 +157,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Verify:** RequestTest passes; smoke test: `php -S` temp app with a route returning `$request->getBody()`; `curl -X POST -H 'Content-Type: application/json; charset=utf-8' -d '{"a":1}'` -> 200 `{"a":1}`; `-d '{bad'` -> 400; no "Undefined array key" in the server log.
 - **Outcome:** Constructor no longer decodes; `getBody()` decodes once via new `isJson()` media-type check and converts JsonException to `WebException::badRequest('Invalid JSON request body: ...')`; `lookup()` reads the body only when the query lacks the key and returns the default for non-array bodies. New tests failed first (JsonException from constructor, charset/falsy bodies left raw). `composer check`: cs 0, phpstan 0, all tests OK. Smoke test (`php -S` on a temp app under /tmp, routes use App's `METHOD:/path` syntax): charset JSON -> 200 `{"body":{"a":1},...}`; `{bad` and empty -> 400 `Invalid JSON request body: Syntax error`; `/path/12:30?q=x` -> path `/path/12:30`; server log has no warnings.
 
-### [ ] M3 — Response statuses, JSON errors, escaping and content-length
+### [x] M3 — Response statuses, JSON errors, escaping and content-length
 
 - **Approach:** add 308/422/429 to STATUSES; `json_encode($data, JSON_THROW_ON_ERROR)`
   with `@throws JsonException`; `htmlspecialchars` in fromThrowable(); `(string) strlen()`
@@ -165,7 +165,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Test seam:** Response factories and `getStatus()`/`getBody()`/`getHeader()`.
 - **Deliverable:** listed Response bugs fixed.
 - **Verify:** `vendor/bin/phpunit tests/web/ResponseTest.php` passes; phpstan 0 errors.
-- **Outcome:**
+- **Outcome:** STATUSES gains 308/422/429; `json()` uses JSON_THROW_ON_ERROR; `fromThrowable()` escapes with htmlspecialchars(ENT_QUOTES | ENT_SUBSTITUTE, UTF-8); content-length cast to string (the phpstan baseline entry for Response.php is now unmatched, which phpstan accepts). New tests failed first ("308 is not a valid HTTP status code", TypeError from json(), raw `<script>`, int 3). `composer check`: cs 0, phpstan 0, 101 tests OK.
 
 ### [ ] M4 — Cookie options with HttpOnly and SameSite defaults
 
