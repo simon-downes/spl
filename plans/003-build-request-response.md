@@ -1,6 +1,6 @@
 # 003 — Request and Response hardening
 
-Status: building
+Status: reviewing
 Branch: build-it/003-request-response (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/003-request-response
 
