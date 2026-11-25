@@ -7,7 +7,7 @@ use spl\web\Request;
 use spl\web\Response;
 
 /**
- * Exposes App's protected routing steps to tests without SPL_ROOT, SPL::error() or a real send.
+ * Exposes App's protected routing steps to tests without SPL_ROOT or SPL::error().
  *
  * Redeclares $routes so registered routes never leak into App itself.
  */
@@ -27,17 +27,6 @@ final class TestableApp extends App {
      */
     public static function add(array $routes): void {
         static::addRoutes($routes);
-    }
-
-    public static function load(string $file): void {
-        static::loadRoutes($file);
-    }
-
-    /**
-     * @return array<string, array<string, callable|string>>
-     */
-    public static function routes(): array {
-        return static::$routes;
     }
 
     /**

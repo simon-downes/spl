@@ -1,6 +1,6 @@
 # 002 — Router fixes: method prefixes, HEAD, named parameters, handler return types
 
-Status: reviewing
+Status: done
 Branch: build-it/002-router-app (base: master @ fcd7a53)
 Worktree: /workspace/.git/build-it-worktrees/002-router-app
 
@@ -60,7 +60,7 @@ Codebase facts (master @ fcd7a53):
 | D10 | 204 response shape for `null` | `new Response(204)` with `content-type` and `content-length` removed via `setHeader(name, null)` | Plain `new Response(204)` | RFC 9110 forbids Content-Length on 204; uses only the existing public API | self |
 | D11 | JsonSerializable encoding | `new Response(200, json_encode($result, JSON_THROW_ON_ERROR), 'application/json')` | `Response::json($result->jsonSerialize())` | `jsonSerialize()` may return a scalar; `Response::json()` only accepts `array` | self |
 | D12 | Test seam | Extract `protected static dispatch(Request): Response` (match → instantiate → invoke → convert) and `protected static respond(Request, Response): void` (HEAD-aware send) from `handle()`; test via `tests/web/fixtures/TestableApp.php` (subclass redeclaring `$routes`, public wrappers) and fixture route files; two `#[RunInSeparateProcess]` `handle()` tests with `SPL_ROOT` = `tests/web/fixtures/app` | Reflection on `App`; only separate-process `handle()` tests | `handle()` needs `SPL_ROOT` and exits via `SPL::error()` on 5xx; a subclass keeps most tests in-process and isolated (own static `$routes`) | self |
-| D13 | Optional named groups that don't participate | PCRE default (trailing unmatched groups absent → handler default; non-trailing → `''`) | `PREG_UNMATCHED_AS_NULL` | Would change today's positional `''` values to `null` and break `string`-typed handlers | self |
+| D13 | Optional groups that don't participate | Match with `PREG_UNMATCHED_AS_NULL`; named routes omit unmatched named groups (handler default applies); unnamed routes are rebuilt to PCRE's default shape (trailing unmatched dropped, others `''`) in `routeArguments()` | PCRE default flags for both | With default flags an unmatched trailing named group vanishes, the route then looks unnamed and its unnamed captures are passed positionally into the wrong parameters (found in review); `null` for unnamed groups would break `string`-typed handlers | self |
 
 ## Requirements
 
@@ -212,6 +212,12 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
 
 ## Deviations
 
+- Review: D13 changed. With default `preg_match` flags, `GET:/(\w+)(?:/(?<id>\d+))?` on `/users`
+  returned no string keys, so `'users'` was passed positionally (into `$id`), and a non-trailing
+  unmatched named group arrived as `''` rather than using the handler default. `match()` now uses
+  `PREG_UNMATCHED_AS_NULL` and a new protected `routeArguments()`; unnamed routes keep today's
+  values. Tests: `testUnmatchedOptionalNamedGroupIsLeftOut`, `testUnmatchedNamedGroupUsesHandlerDefault`
+  (both failed first), `testUnmatchedUnnamedGroupsKeepPcreDefaults`.
 - M1: `loadRoutes()` now only `require`s the file and passes the array to a new protected
   `addRoutes(array)`, so tests register closures directly instead of one fixture file per case
   (only the separate-process `handle()` test uses a routes file). No behaviour change.
@@ -241,8 +247,46 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
   count 1), `Request::getMethod()` has no case normalisation, PHPUnit collects only `*Test.php`
   (default suffix, `tests` directory in phpunit.xml.dist), CLI `header()`/`headers_list()`
   behaviour (probed with `php -r`).
+- Code review: 1 round, self-conducted against CODE-REVIEW.md (no subagent tool in this
+  session), roles `general` and `risk` (`risk` run: the change alters a library API used per
+  request, the routes-file format, and handles request paths). Scope `fcd7a53...HEAD`.
+  - ⚠️ general (`App::match()`): a route whose only named group is optional and trailing lost
+    its named-ness when the group didn't match, so unnamed captures went positionally into the
+    handler's parameters. Fixed (see Deviations, D13).
+  - ℹ️ general (tests): `testMultiMethodPrefix`, `testPathMayContainColons` and
+    `testSamePathWithDifferentMethodsIsMerged` asserted the internal route table. Fixed: they now
+    assert dispatch results; `TestableApp::routes()` removed.
+  - ℹ️ general: `TestableApp::load()` was unused (the file path is covered by the separate-process
+    `handle()` tests). Removed. Fixture docblock claimed "no real send"; corrected.
+  - ℹ️ general: `dispatch()` docblock lacked `@throws UnexpectedValueException`. Added.
+  - ℹ️ general: class-string (invokable) handlers had no test through the new named-argument
+    call. Added `testInvokableClassHandlerGetsNamedArgument` with `tests/web/fixtures/ShowUser.php`.
+  - ℹ️ risk (API contract): unprefixed/lowercase route keys now throw, and the repo's own
+    AGENTS.md/README examples use unprefixed keys. Marked under "Breaking changes" in the PR
+    body and in "For the docs PR".
+  - Checked, not flagged: exception messages include the request path, but 5xx goes through
+    `SPL::error()` (error-handling lane) like any exception message did before; captures and
+    handler arguments come from developer-written regexes, so request input can't choose argument
+    names; HEAD buffering is released in `finally`; per-request cost is one extra
+    `array_filter` per matched route.
+  - Spec check: every MUST traced to code and a passing `AppTest` test (prefix forms, invalid
+    keys, HEAD fallback/explicit HEAD/405, HEAD body in `respond()` and `handle()`, named/positional
+    args, return types, `composer check`). `git diff fcd7a53 -- phpstan.neon phpstan-baseline.neon`
+    empty; no `phpstan-ignore` in App.php.
+- Merge risk: Medium: `handle()` runs this code on every request, and an app with any
+  unprefixed route key now gets a 500 on every request; it fails immediately and loudly with the
+  key in the message, is marked as breaking, and reverts cleanly.
 
 ## Outcome
+
+Delivered in `src/web/App.php` only: strict method-prefix parsing (`GET:/x`, `GET|POST:/x`,
+`(GET|POST):/x`) with an `InvalidArgumentException` naming any bad key; HEAD answered by GET
+handlers with no body; named captures as named handler arguments; handler results mapped by
+type (null → 204, JsonSerializable → JSON, other types → `UnexpectedValueException` → 500).
+No change to Response/Request/WebException. Evidence: `composer check` exit 0 (cs 0/29 files,
+PHPStan `[OK] No errors`, PHPUnit OK 102 tests, 203 assertions); random-order seeds 1, 7, 42,
+999, 1234 OK; `php -S` + curl check (M4 Outcome). Not verified: header output inside PHPUnit
+(CLI `header()` is a no-op; covered by the curl check instead); behaviour behind Apache/nginx.
 
 PR: pending
 CI: pending

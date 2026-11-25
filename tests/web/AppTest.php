@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use UnexpectedValueException;
 
+use spl\tests\web\fixtures\ShowUser;
 use spl\tests\web\fixtures\TestableApp;
 use spl\web\App;
 use spl\web\Request;
@@ -65,7 +66,6 @@ final class AppTest extends TestCase {
         $handler = fn(Request $r) => 'x';
         TestableApp::add([$key => $handler]);
 
-        $this->assertSame(['/x' => ['GET' => $handler, 'POST' => $handler]], TestableApp::routes());
         $this->assertSame($handler, TestableApp::matchRoute('/x', 'GET')[0]);
         $this->assertSame($handler, TestableApp::matchRoute('/x', 'POST')[0]);
         $this->assertMethodNotAllowed('/x', 'PUT');
@@ -82,15 +82,14 @@ final class AppTest extends TestCase {
     public function testPathMayContainColons(): void {
         TestableApp::add(['GET:/a:b' => fn(Request $r) => 'x']);
 
-        $this->assertSame(['/a:b'], array_keys(TestableApp::routes()));
+        $this->assertSame('x', TestableApp::dispatchRequest($this->request('GET', '/a:b'))->getBody());
     }
 
     public function testSamePathWithDifferentMethodsIsMerged(): void {
-        $get  = fn(Request $r) => 'get';
-        $post = fn(Request $r) => 'post';
-        TestableApp::add(['GET:/x' => $get, 'POST:/x' => $post]);
+        TestableApp::add(['GET:/x' => fn(Request $r) => 'get', 'POST:/x' => fn(Request $r) => 'post']);
 
-        $this->assertSame(['/x' => ['GET' => $get, 'POST' => $post]], TestableApp::routes());
+        $this->assertSame('get', TestableApp::dispatchRequest($this->request('GET', '/x'))->getBody());
+        $this->assertSame('post', TestableApp::dispatchRequest($this->request('POST', '/x'))->getBody());
     }
 
     /**
@@ -147,6 +146,14 @@ final class AppTest extends TestCase {
         $this->assertSame('user 42', $response->getBody());
     }
 
+    public function testInvokableClassHandlerGetsNamedArgument(): void {
+        TestableApp::add(['GET:/users/(?<id>\d+)' => ShowUser::class]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/users/42'));
+
+        $this->assertSame('user 42', $response->getBody());
+    }
+
     public function testNamedGroupsAreMatchedByNameNotPosition(): void {
         TestableApp::add(['GET:/p/(?<b>\w+)/(?<a>\w+)' => fn(Request $r, string $a, string $b) => "a={$a} b={$b}"]);
 
@@ -161,6 +168,55 @@ final class AppTest extends TestCase {
         $response = TestableApp::dispatchRequest($this->request('GET', '/users/42'));
 
         $this->assertSame('{"id":"42"}', $response->getBody());
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function optionalNamedGroupPaths(): array {
+        return [
+            'group matched'     => ['/users/42', '{"id":"42"}'],
+            'group not matched' => ['/users', '[]'],
+        ];
+    }
+
+    #[DataProvider('optionalNamedGroupPaths')]
+    public function testUnmatchedOptionalNamedGroupIsLeftOut(string $path, string $json): void {
+        TestableApp::add(['GET:/(\w+)(?:/(?<id>\d+))?' => fn(Request $r, string ...$args) => json_encode($args, JSON_THROW_ON_ERROR)]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', $path));
+
+        $this->assertSame($json, $response->getBody());
+    }
+
+    public function testUnmatchedNamedGroupUsesHandlerDefault(): void {
+        TestableApp::add(['GET:/p(?:/(?<a>\d+))?/(?<b>\w+)' => fn(Request $r, string $b, string $a = 'none') => "a={$a} b={$b}"]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', '/p/x'));
+
+        $this->assertSame('a=none b=x', $response->getBody());
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function optionalUnnamedGroupPaths(): array {
+        return [
+            'middle group not matched'   => ['/q/x', '["","x"]'],
+            'trailing group not matched' => ['/r', '[]'],
+        ];
+    }
+
+    #[DataProvider('optionalUnnamedGroupPaths')]
+    public function testUnmatchedUnnamedGroupsKeepPcreDefaults(string $path, string $json): void {
+        TestableApp::add([
+            'GET:/q(?:/(\d+))?/(\w+)' => fn(Request $r, string ...$args) => json_encode($args, JSON_THROW_ON_ERROR),
+            'GET:/r(?:/(\d+))?'       => fn(Request $r, string ...$args) => json_encode($args, JSON_THROW_ON_ERROR),
+        ]);
+
+        $response = TestableApp::dispatchRequest($this->request('GET', $path));
+
+        $this->assertSame($json, $response->getBody());
     }
 
     public function testNamedGroupWithoutMatchingParameterSurfacesPhpError(): void {

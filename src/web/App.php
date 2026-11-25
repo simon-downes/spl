@@ -78,6 +78,7 @@ class App {
      * Matches the request to a route, calls its handler and converts the result to a Response.
      *
      * @throws WebException If no route matches or the method is not allowed
+     * @throws UnexpectedValueException If the handler returned an unsupported type
      */
     protected static function dispatch(Request $request): Response {
 
@@ -224,7 +225,8 @@ class App {
 
         foreach (static::$routes as $regex => $handlers) {
 
-            if (preg_match(";^{$regex}$;", $path, $parameters)) {
+            // unmatched groups are null so named groups are always present, matched or not
+            if (preg_match(";^{$regex}$;", $path, $parameters, PREG_UNMATCHED_AS_NULL)) {
 
                 // HEAD is answered by the GET handler unless the route has its own HEAD handler
                 $handler = $handlers[$method] ?? ($method === 'HEAD' ? $handlers['GET'] ?? false : false);
@@ -236,17 +238,41 @@ class App {
                 // first element is the complete string, we only care about the sub-matches
                 array_shift($parameters);
 
-                // named groups are passed as named arguments, so drop the numeric duplicates
-                // (and any unnamed groups) as named and positional arguments can't be mixed
-                $named = array_filter($parameters, 'is_string', ARRAY_FILTER_USE_KEY);
-
-                return [$handler, $named ?: $parameters];
+                return [$handler, static::routeArguments($parameters)];
 
             }
 
         }
 
         throw WebException::notFound($path);
+
+    }
+
+    /**
+     * Turns a route's captures into handler arguments.
+     *
+     * If the route has named groups only those are returned, keyed by name (named and positional
+     * arguments can't be mixed); a named group that didn't match is left out so the handler's
+     * default applies. Otherwise the captures are returned by position as PCRE reports them by
+     * default: trailing unmatched groups are dropped and other unmatched groups are ''.
+     *
+     * @param array<int|string, string|null> $captures
+     *
+     * @return array<int|string, string>
+     */
+    protected static function routeArguments(array $captures): array {
+
+        $named = array_filter($captures, 'is_string', ARRAY_FILTER_USE_KEY);
+
+        if ($named) {
+            return array_filter($named, fn(?string $value) => $value !== null);
+        }
+
+        while ($captures && end($captures) === null) {
+            array_pop($captures);
+        }
+
+        return array_map(fn(?string $value) => $value ?? '', $captures);
 
     }
 
