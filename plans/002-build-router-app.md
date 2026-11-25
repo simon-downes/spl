@@ -191,7 +191,7 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
   matches). `AppTest` OK (28 tests, 58 assertions); `composer check` exit 0 (PHPUnit OK 88
   tests, 186 assertions).
 
-### [ ] M4 — answer HEAD on GET routes without a body
+### [x] M4 — answer HEAD on GET routes without a body
 
 - **Approach:** Tests first (HEAD on GET / GET|HEAD / POST-only routes, explicit HEAD wins,
   `respondTo()` output for HEAD vs GET, separate-process `handle()` HEAD test). Add the D8 fallback
@@ -200,7 +200,15 @@ fallback and filters named captures; `dispatch()` owns handler invocation and ca
   `#[RunInSeparateProcess]` `App::handle()`.
 - **Deliverable:** HEAD returns GET's status/headers with no body.
 - **Verify:** `vendor/bin/phpunit tests/web/AppTest.php` passes; `composer check` exit 0.
-- **Outcome:**
+- **Outcome:** Before: `HEAD` on `GET:/x` → `WebException: Method Not Allowed`; `respondTo()` and
+  separate-process `handle()` for HEAD output the body (2 failures, 1 error). After: D8 fallback
+  in `match()`, D9 buffering (with `finally`) in `respond()`. `AppTest` OK (36 tests, 70
+  assertions); `composer check` exit 0 (cs 0/28, PHPStan `[OK] No errors`, PHPUnit OK 96 tests,
+  198 assertions); random order seeds 1, 42, 999 OK. Real HTTP check with `php -S` + curl
+  against a temp app using `SPL::run()`: `GET /` 200 `content-length: 13` + body; `HEAD /`
+  200 `content-length: 13`, no body; `POST /api/users` on `(GET|POST)` → `{"method":"POST"}`;
+  `GET /users/42` on `(?<id>\d+)` → `{"id":"42"}`; `PUT` → 405; null handler → `204 No Content`
+  with no content-length (PHP's SAPI still adds its default `Content-type`).
 
 ## Deviations
 
@@ -240,3 +248,14 @@ PR: pending
 CI: pending
 
 ## Follow-ups
+
+- `match()` stops at the first route regex that matches the path, so a later route with the
+  same-shaped regex but a different method (e.g. `GET:/users/(?<id>\d+)` then
+  `DELETE:/users/(\d+)`) is unreachable and the request gets 405 (pre-existing; seen in the
+  curl check).
+- 405 responses carry no `Allow` header.
+- For a null handler result PHP's SAPI adds its default `Content-type` to the 204; suppressing
+  it needs `header_remove()`/`default_mimetype` handling in `Response::send()` (request-response
+  lane).
+- HEAD requests that end in a 5xx still get `SPL::error()`'s error page body (error-handling
+  lane).

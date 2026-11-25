@@ -44,6 +44,9 @@ class App {
      * - null is converted to a 204 No Content response
      * - Response objects are used as-is
      * - Anything else is an error (500)
+     *
+     * A HEAD request is answered by the route's GET handler unless it has its own HEAD handler;
+     * the status and headers are sent without the body.
      */
     public static function handle(Request $request): void {
 
@@ -140,10 +143,26 @@ class App {
 
     /**
      * Sends the response to the client.
+     *
+     * HEAD requests get the status and headers (including the content-length of the body that
+     * GET would return) but no body.
      */
     protected static function respond(Request $request, Response $response): void {
 
-        $response->send();
+        if ($request->getMethod() !== 'HEAD') {
+            $response->send();
+            return;
+        }
+
+        // headers aren't output buffered, so this only discards the body
+        ob_start();
+
+        try {
+            $response->send();
+        }
+        finally {
+            ob_end_clean();
+        }
 
     }
 
@@ -207,7 +226,8 @@ class App {
 
             if (preg_match(";^{$regex}$;", $path, $parameters)) {
 
-                $handler = $handlers[$method] ?? false;
+                // HEAD is answered by the GET handler unless the route has its own HEAD handler
+                $handler = $handlers[$method] ?? ($method === 'HEAD' ? $handlers['GET'] ?? false : false);
 
                 if (!$handler) {
                     throw WebException::methodNotAllowed($method, $path);

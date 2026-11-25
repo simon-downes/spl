@@ -172,6 +172,74 @@ final class AppTest extends TestCase {
         TestableApp::dispatchRequest($this->request('GET', '/users/42'));
     }
 
+    // --- HEAD --------------------------------------------------------------------------------
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function getRouteKeys(): array {
+        return [
+            'GET only'     => ['GET:/x'],
+            'GET and HEAD' => ['GET|HEAD:/x'],
+        ];
+    }
+
+    #[DataProvider('getRouteKeys')]
+    public function testHeadIsAnsweredLikeGet(string $key): void {
+        TestableApp::add([$key => fn(Request $r) => '<p>hello</p>']);
+
+        $get  = TestableApp::dispatchRequest($this->request('GET', '/x'));
+        $head = TestableApp::dispatchRequest($this->request('HEAD', '/x'));
+
+        $this->assertSame($get->getStatus(), $head->getStatus());
+        $this->assertSame($get->getHeaders(), $head->getHeaders());
+        $this->assertSame(12, $head->getHeader('content-length'));
+    }
+
+    public function testHeadIsNotAllowedWithoutGet(): void {
+        TestableApp::add(['POST:/x' => fn(Request $r) => 'x']);
+
+        $this->assertMethodNotAllowed('/x', 'HEAD');
+    }
+
+    public function testExplicitHeadHandlerWins(): void {
+        $get  = fn(Request $r) => 'get';
+        $head = fn(Request $r) => 'head';
+        TestableApp::add(['GET:/x' => $get, 'HEAD:/x' => $head]);
+
+        $this->assertSame($head, TestableApp::matchRoute('/x', 'HEAD')[0]);
+    }
+
+    public function testRespondSendsBodyForGet(): void {
+        $this->expectOutputString('hello');
+
+        TestableApp::respondTo($this->request('GET', '/x'), Response::html('hello'));
+    }
+
+    public function testRespondOmitsBodyForHead(): void {
+        $this->expectOutputString('');
+
+        TestableApp::respondTo($this->request('HEAD', '/x'), Response::html('hello'));
+    }
+
+    #[RunInSeparateProcess]
+    public function testHandleSendsNoBodyForHead(): void {
+        define('SPL_ROOT', __DIR__ . '/fixtures/app');
+
+        $this->expectOutputString('');
+
+        App::handle($this->request('HEAD', '/'));
+    }
+
+    #[RunInSeparateProcess]
+    public function testHandleSendsBodyForGet(): void {
+        define('SPL_ROOT', __DIR__ . '/fixtures/app');
+
+        $this->expectOutputString('<h1>home</h1>');
+
+        App::handle($this->request('GET', '/'));
+    }
+
     // --- handler return values ---------------------------------------------------------------
 
     public function testStringReturnBecomesHtml(): void {
