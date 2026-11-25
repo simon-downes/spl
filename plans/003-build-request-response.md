@@ -167,7 +167,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Verify:** `vendor/bin/phpunit tests/web/ResponseTest.php` passes; phpstan 0 errors.
 - **Outcome:** STATUSES gains 308/422/429; `json()` uses JSON_THROW_ON_ERROR; `fromThrowable()` escapes with htmlspecialchars(ENT_QUOTES | ENT_SUBSTITUTE, UTF-8); content-length cast to string (the phpstan baseline entry for Response.php is now unmatched, which phpstan accepts). New tests failed first ("308 is not a valid HTTP status code", TypeError from json(), raw `<script>`, int 3). `composer check`: cs 0, phpstan 0, 101 tests OK.
 
-### [ ] M4 — Cookie options with HttpOnly and SameSite defaults
+### [x] M4 — Cookie options with HttpOnly and SameSite defaults
 
 - **Approach:** per D12-D14; stored cookie array gains `secure`, `httponly`, `samesite`;
   `send()` calls `setcookie($name, $value, [expires, path, domain, secure, httponly,
@@ -177,7 +177,7 @@ handler, where `App::handle()` already turns a WebException into a response.
 - **Deliverable:** cookies default to HttpOnly + SameSite=Lax; secure settable.
 - **Verify:** ResponseTest passes; smoke test route setting a cookie shows
   `Set-Cookie: ...; HttpOnly; SameSite=Lax` in `curl -i`.
-- **Outcome:**
+- **Outcome:** `setCookie()` gains `secure`, `httponly`, `samesite` params (samesite validated and stored as Strict/Lax/None); `send()` uses the setcookie() options array. New tests failed first ("Unknown named parameter $secure", missing keys). `composer check`: cs 0, phpstan 0, 106 tests OK. Smoke test: `/cookie` sends `Set-Cookie: s=v; path=/; HttpOnly; SameSite=Lax` and `t=w; ...; Max-Age=60; path=/; secure; HttpOnly; SameSite=Strict`; `/xss` -> 400 `<h1>&lt;script&gt;alert(1)&lt;/script&gt;</h1>`; `/limit` -> `HTTP/1.1 429 Too Many Requests`; server log clean.
 
 ## Deviations
 

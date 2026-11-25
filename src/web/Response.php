@@ -10,6 +10,7 @@ use Throwable;
 use Exception;
 use JsonException;
 use BadMethodCallException;
+use InvalidArgumentException;
 
 /**
  * HTTP response representation with fluent interface for configuration.
@@ -100,7 +101,7 @@ class Response {
     /**
      * Cookie array.
      *
-     * @var array<string, array{value: string, expires: int, path: string, domain: string}>
+     * @var array<string, array{value: string, expires: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Strict'|'Lax'|'None'}>
      */
     protected array $cookies;
 
@@ -282,9 +283,27 @@ class Response {
     /**
      * Sets a cookie (or removes it if value is null).
      *
-     * The expires parameter is in seconds from now, not a timestamp.
+     * The expires parameter is in seconds from now, not a timestamp; 0 means a session cookie.
+     * Cookies are HttpOnly and SameSite=Lax by default. Browsers reject SameSite=None
+     * cookies that aren't also secure.
+     *
+     * Usage:
+     *   $response->setCookie('session', $id, 3600, secure: true);
+     *
+     * @param string $samesite One of Strict, Lax or None (case-insensitive)
+     *
+     * @throws InvalidArgumentException If samesite isn't Strict, Lax or None
      */
-    public function setCookie(string $name, ?string $value = null, int $expires = 0, string $path = '/', string $domain = ''): static {
+    public function setCookie(
+        string $name,
+        ?string $value = null,
+        int $expires = 0,
+        string $path = '/',
+        string $domain = '',
+        bool $secure = false,
+        bool $httponly = true,
+        string $samesite = 'Lax',
+    ): static {
 
         // if the value is null then unset the cookie
         if ($value === null) {
@@ -292,11 +311,21 @@ class Response {
             return $this;
         }
 
+        $samesite = match (strtolower($samesite)) {
+            'strict' => 'Strict',
+            'lax'    => 'Lax',
+            'none'   => 'None',
+            default  => throw new InvalidArgumentException("Invalid SameSite value: {$samesite}"),
+        };
+
         $this->cookies[$name] = [
-            'value'   => $value,
-            'expires' => $expires ? time() + $expires : 0,
-            'path'    => $path,
-            'domain'  => $domain,
+            'value'    => $value,
+            'expires'  => $expires ? time() + $expires : 0,
+            'path'     => $path,
+            'domain'   => $domain,
+            'secure'   => $secure,
+            'httponly' => $httponly,
+            'samesite' => $samesite,
         ];
 
         return $this;
@@ -312,7 +341,14 @@ class Response {
         }
 
         foreach ($this->cookies as $name => $cookie) {
-            setcookie($name, $cookie['value'], $cookie['expires'], $cookie['path'], $cookie['domain']);
+            setcookie($name, $cookie['value'], [
+                'expires'  => $cookie['expires'],
+                'path'     => $cookie['path'],
+                'domain'   => $cookie['domain'],
+                'secure'   => $cookie['secure'],
+                'httponly' => $cookie['httponly'],
+                'samesite' => $cookie['samesite'],
+            ]);
         }
 
         echo $this->body;

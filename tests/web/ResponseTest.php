@@ -3,6 +3,7 @@
 namespace spl\tests\web;
 
 use Exception;
+use InvalidArgumentException;
 use JsonException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -120,6 +121,62 @@ final class ResponseTest extends TestCase {
     public function testContentLengthIsAString(): void {
         $this->assertSame('3', Response::text('abc')->getHeader('content-length'));
         $this->assertSame('2', Response::text('é')->getHeader('content-length'));
+    }
+
+    public function testCookieDefaultsToHttpOnlyAndSameSiteLax(): void {
+        $response = Response::text('x')->setCookie('session', 'abc');
+
+        $this->assertSame([
+            'value'    => 'abc',
+            'expires'  => 0,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => false,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ], $response->getCookie('session'));
+    }
+
+    public function testCookiePositionalArgumentsStillWork(): void {
+        $before = time();
+        $cookie = Response::text('x')->setCookie('s', 'v', 60, '/app', 'example.com')->getCookie('s');
+
+        $this->assertIsArray($cookie);
+        $this->assertGreaterThanOrEqual($before + 60, $cookie['expires']);
+        $this->assertLessThanOrEqual(time() + 60, $cookie['expires']);
+        $this->assertSame('/app', $cookie['path']);
+        $this->assertSame('example.com', $cookie['domain']);
+        $this->assertTrue($cookie['httponly']);
+    }
+
+    public function testCookieOptionsCanBeSet(): void {
+        $cookie = Response::text('x')
+            ->setCookie('s', 'v', secure: true, httponly: false, samesite: 'strict')
+            ->getCookie('s');
+
+        $this->assertIsArray($cookie);
+        $this->assertTrue($cookie['secure']);
+        $this->assertFalse($cookie['httponly']);
+        $this->assertSame('Strict', $cookie['samesite']);
+
+        $cookie = Response::text('x')->setCookie('s', 'v', secure: true, samesite: 'NONE')->getCookie('s');
+
+        $this->assertIsArray($cookie);
+        $this->assertSame('None', $cookie['samesite']);
+    }
+
+    public function testCookieRejectsUnknownSameSite(): void {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SameSite value: bogus');
+
+        Response::text('x')->setCookie('s', 'v', samesite: 'bogus');
+    }
+
+    public function testCookieIsRemovedOnNull(): void {
+        $response = Response::text('x')->setCookie('s', 'v')->setCookie('s', null);
+
+        $this->assertNull($response->getCookie('s'));
+        $this->assertSame([], $response->getCookies());
     }
 
 }
